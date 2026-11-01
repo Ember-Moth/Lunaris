@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/inbound"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/node"
-	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	ports "github.com/Ember-Moth/Lunaris/internal/store"
 )
 
@@ -25,7 +25,7 @@ type Service struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	repository      ports.Repository
-	registry        *protocol.Registry
+	registry        *inbound.Registry
 	runtime         *node.Runtime
 	release         func()
 	gate            chan struct{}
@@ -53,7 +53,7 @@ type ServiceStatus struct {
 
 // OpenService restores only the committed revision in managed mode. Offline
 // mode starts empty so an invalid old binding cannot prevent an explicit repair.
-func OpenService(ctx context.Context, repository ports.Repository, registry *protocol.Registry, restore bool) (*Service, error) {
+func OpenService(ctx context.Context, repository ports.Repository, registry *inbound.Registry, restore bool) (*Service, error) {
 	if ctx == nil || repository == nil || registry == nil {
 		return nil, errors.New("configuration service dependencies are required")
 	}

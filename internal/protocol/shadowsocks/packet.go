@@ -103,7 +103,7 @@ func (c *packetSession) WritePacket(buffer *buf.Buffer, destination M.Socksaddr)
 		if err := c.server.udp.SetWriteDeadline(time.Now().Add(c.server.limits.DialTimeout)); err != nil {
 			return 0, err
 		}
-		return c.server.udp.WriteToUDPAddrPort(packet, c.source)
+		return c.server.udp.WriteTo(packet, net.UDPAddrFromAddrPort(c.source))
 	}})
 	// Classic AEAD UDP is symmetric: the upstream codec supplies salt, HKDF,
 	// encryption and address framing in both directions. No wire code is forked.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Ember-Moth/Lunaris/internal/egress"
+	"github.com/Ember-Moth/Lunaris/internal/inbound"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/relay"
@@ -45,7 +46,7 @@ type record struct {
 type Runtime struct {
 	ctx                             context.Context
 	cancel                          context.CancelFunc
-	registry                        *protocol.Registry
+	registry                        *inbound.Registry
 	initialTimeout                  time.Duration
 	gate                            chan struct{}
 	mu                              sync.RWMutex
@@ -64,7 +65,7 @@ type Runtime struct {
 	watchers                        sync.WaitGroup
 }
 
-func Start(ctx context.Context, snapshot *model.RuntimeConfig, registry *protocol.Registry, log *slog.Logger) (*Runtime, error) {
+func Start(ctx context.Context, snapshot *model.RuntimeConfig, registry *inbound.Registry, log *slog.Logger) (*Runtime, error) {
 	if ctx == nil || registry == nil {
 		return nil, errors.New("runtime context and protocol registry are required")
 	}
@@ -105,7 +106,6 @@ func (r *Runtime) ShutdownTimeout() time.Duration { return r.timeout() }
 // build creates no listening sockets. Owned records include unpublished
 // candidates so a failed cleanup cannot make live resources disappear.
 func (r *Runtime) build(target *model.RuntimeConfig, spec model.ListenerSpec) (*record, error) {
-	factory, _ := r.registry.Lookup(spec.Protocol) // Normalize already resolved it.
 	ctx, cancel := context.WithCancel(r.ctx)
 	flow := relay.New(ctx, &egress.Direct{}, target.Config.Limits)
 	credentials := make(map[string][]byte, len(spec.CredentialRefs))
@@ -117,7 +117,7 @@ func (r *Runtime) build(target *model.RuntimeConfig, spec model.ListenerSpec) (*
 	factorySpec.Network = slices.Clone(spec.Network)
 	factorySpec.CredentialRefs = slices.Clone(spec.CredentialRefs)
 	cert := target.Certificates[spec.CertificateRef]
-	instance, err := factory.Build(protocol.ResolvedListenerSpec{Spec: factorySpec, Limits: target.Config.Limits, Credentials: credentials, Certificate: bytes.Clone(cert.Certificate), PrivateKey: bytes.Clone(cert.PrivateKey)},
+	instance, err := r.registry.Build(protocol.ResolvedListenerSpec{Spec: factorySpec, Limits: target.Config.Limits, Credentials: credentials, Certificate: bytes.Clone(cert.Certificate), PrivateKey: bytes.Clone(cert.PrivateKey)},
 		protocol.Dependencies{Handler: flow, Logger: logger.NOP()})
 	if err != nil {
 		cancel()

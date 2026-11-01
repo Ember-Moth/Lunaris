@@ -199,7 +199,7 @@ API 返回的配置只含不透明资产引用；凭据更换先创建新资产�
 
 ### 适配器契约
 
-每个适配器提供能力描述、校验、实例构建三类入口。节点只接受程序实际编译并验证过的协议组合；前端根据能力描述显示表单，后端始终再次校验。
+协议工厂和传输工厂分别注册，由 `internal/inbound` 组合。协议工厂提供能力描述、校验和协议回调构建，传输工厂构建可启停实例。详细契约与扩展方式见[工厂注册表](factory-registries.md)。节点只接受程序实际编译并验证过的协议组合；前端根据能力描述显示表单，后端始终再次校验。
 
 以下为概念接口，不是承诺导出的 SDK：
 
@@ -210,10 +210,16 @@ type RelayHandler interface {
     N.UDPConnectionHandlerEx
 }
 
-type Factory interface {
-    Capabilities() Capabilities
+type ProtocolFactory interface {
+    Capabilities() ProtocolCapabilities
     Validate(spec ListenerSpec) []FieldError
-    Build(spec ResolvedListenerSpec, deps Dependencies) (Instance, error)
+    Build(spec ResolvedListenerSpec, deps Dependencies) (transport.Binding, error)
+}
+
+type TransportFactory interface {
+    Capabilities() TransportCapabilities
+    Validate(spec ListenerSpec) []FieldError
+    Build(spec ResolvedTransportSpec, binding transport.Binding) (Instance, error)
 }
 
 type Instance interface {
@@ -225,7 +231,7 @@ type Instance interface {
 
 `Dependencies` 中的转发回调使用这个 `RelayHandler`，并携带 sing logger 等公共依赖。协议不支持的网络类型不会触发相应回调；适配器负责注入监听器 ID、实例代次和认证凭据标签。
 
-- `Build` 接收已解析、不可变的凭据和证书，不访问数据库、不绑定监听端口、不启动后台循环；失败释放构建资源。
+- 协议 `Build` 接收已解析的凭据并返回回调；传输 `Build` 接收监听设置、证书与这些回调。二者不访问数据库、不绑定监听端口、不启动后台循环；失败释放构建资源。
 - `Start` 拥有实例生命周期上下文，建立全部必需 socket 和接收循环后才返回成功。HTTP 请求取消不取消节点实例。部分启动失败必须可由 `Stop` 完整清理。
 - `Events` 提供有界生命周期状态，运行时维护最终状态快照；致命退出不能仅靠可能丢弃的日志传播。
 - `Stop` 幂等，停止接入并关闭所属 socket、TCP 连接、UDP 会话、QUIC 连接、子流和定时器；截止时间到达时强制回收。不是只关闭 QUIC listener 就算结束。
@@ -243,7 +249,7 @@ UDP：保留数据报边界与每包目标地址，建立有界映射，处理�
 
 传输或 Vision 依赖的接口不能被通用包装器隐藏。仅在协议完成必要封装后接入统计，并验证 `ReadFrom`、`WriteTo`、buffer 接口和上游 unwrap 路径不会绕过需要执行的逻辑。计数按监听器聚合、随进程重启清零，用于排障，不做计费账本。
 
-代理连接包装应保留 sing 的半关闭和扩展 I/O 能力；当前 Hertz 管理连接追踪器仅用于管理面，不能直接复用为代理连接包装。共同的停止接入、有限排空与强制关闭逻辑由节点/传输层承载，协议适配器负责其特有 socket、握手和 QUIC 会话。
+代理连接包装应保留 sing 的半关闭和扩展 I/O 能力；当前 Hertz 管理连接追踪器仅用于管理面，不能直接复用为代理连接包装。共同的停止接入、有限排空与强制关闭逻辑由节点/传输层承载，协议适配器负责协议握手、编解码和会话处理；所有监听 socket 与 QUIC transport 由传输实例持有。
 
 默认系统解析器与直接拨号；提供明确的握手、拨号、UDP 空闲和退出超时。握手并发、连接数、QUIC 流和 UDP 会话都需要有限上界。具体默认数值在协议接入压测后确定，不照搬库中可能极大的默认值。
 

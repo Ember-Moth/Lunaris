@@ -52,6 +52,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 - [Polaris 参考对照](docs/polaris-reference.md)：可采用的协议与生命周期经验，以及本地补丁的复用边界。
 - [开发计划](docs/development-plan.md)：先完成节点核心，再实现 HTTP API 与 Web。
 - [文件模式重载与状态](docs/runtime-reload.md)：SIGHUP、凭据轮换、差异重建与失败恢复。
+- [协议与传输工厂注册表](docs/factory-registries.md)：独立注册、组合校验、资源归属与扩展方式。
 - [协议、传输与证书](docs/protocols.md)：支持矩阵、TLS 资产、配置示例和客户端互通。
 - [持久化配置服务](docs/persistent-configuration.md)：不可变资产、草稿/提交版本、幂等应用、重启恢复与备份。
 

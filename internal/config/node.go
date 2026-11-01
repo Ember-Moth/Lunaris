@@ -10,8 +10,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Ember-Moth/Lunaris/internal/inbound"
 	"github.com/Ember-Moth/Lunaris/internal/model"
-	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -53,7 +53,7 @@ type listenerDocument struct {
 	Transport      model.Transport    `yaml:"transport"`
 }
 
-func LoadNode(path string, registry *protocol.Registry) (*Snapshot, error) {
+func LoadNode(path string, registry *inbound.Registry) (*Snapshot, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open node configuration: %w", err)
@@ -87,7 +87,7 @@ func LoadNode(path string, registry *protocol.Registry) (*Snapshot, error) {
 	if doc.SchemaVersion != model.ConfigSchemaVersion {
 		return nil, errors.New("unsupported node schema_version")
 	}
-	if err := protocol.ValidateLimits(doc.Limits); err != nil {
+	if err := model.ValidateLimits(doc.Limits); err != nil {
 		return nil, err
 	}
 	if doc.Listeners == nil {

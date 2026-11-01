@@ -9,26 +9,29 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
-	"github.com/Ember-Moth/Lunaris/internal/protocol"
-	"github.com/coder/websocket"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
 
 type ServeFunc func(context.Context, net.Conn, M.Socksaddr, N.CloseHandlerFunc) error
 
-// Stream owns the listening socket and every carrier, including hijacked HTTP
+// socketServer owns the listening socket and every carrier, including hijacked HTTP
 // connections and multiplexed streams. Protocol handlers own no listener.
-type Stream struct {
-	Spec            model.ListenerSpec
+type socketServer struct {
+	Spec            ResolvedSpec
 	Limits          model.Limits
 	TLS             *tls.Config
+	upgrade         func(*socketServer, http.ResponseWriter, *http.Request)
+	packet          *PacketHandler
+	udp             net.PacketConn
+	closeErr        error
 	Serve           ServeFunc
 	OnStart         func() error
 	OnClose         func() error
@@ -42,23 +45,58 @@ type Stream struct {
 	pending         chan struct{}
 	wg              sync.WaitGroup
 	once            sync.Once
-	events          chan protocol.InstanceEvent
+	events          chan InstanceEvent
 	done            chan struct{}
 }
 
-func NewStream(spec model.ListenerSpec, limits model.Limits) *Stream {
-	return &Stream{Spec: spec, Limits: limits, conns: make(map[*trackedConn]struct{}), pending: make(chan struct{}, limits.MaxPendingHandshakes), events: make(chan protocol.InstanceEvent, 4), done: make(chan struct{})}
+func newSocketServer(spec ResolvedSpec, binding Binding, upgrade func(*socketServer, http.ResponseWriter, *http.Request)) (*socketServer, error) {
+	if err := model.ValidateLimits(spec.Limits); err != nil {
+		return nil, err
+	}
+	if len(spec.Network) == 0 {
+		spec.Network = []string{"tcp"}
+	}
+	for _, network := range spec.Network {
+		if network == "tcp" && (binding.Stream == nil || binding.Stream.Serve == nil) {
+			return nil, errors.New("transport requires a stream protocol handler")
+		}
+		if network == "udp" && (binding.Packet == nil || binding.Packet.Serve == nil) {
+			return nil, errors.New("transport requires a packet protocol handler")
+		}
+		if network != "tcp" && network != "udp" {
+			return nil, errors.New("unknown socket network")
+		}
+	}
+	var alpn []string
+	if upgrade != nil {
+		alpn = []string{"http/1.1"}
+	}
+	tlsConfig, err := serverTLSConfig(spec, alpn)
+	if err != nil {
+		return nil, err
+	}
+	s := &socketServer{Spec: spec, Limits: spec.Limits, TLS: tlsConfig, upgrade: upgrade, packet: binding.Packet, conns: make(map[*trackedConn]struct{}), pending: make(chan struct{}, spec.Limits.MaxPendingHandshakes), events: make(chan InstanceEvent, 4), done: make(chan struct{})}
+	if binding.Stream != nil {
+		s.Serve = binding.Stream.Serve
+		s.OnStart = binding.Stream.Start
+		s.OnClose = binding.Stream.Close
+	}
+	return s, nil
 }
-func (s *Stream) Events() <-chan protocol.InstanceEvent { return s.events }
-func (s *Stream) Addr() net.Addr {
+
+func (s *socketServer) Events() <-chan InstanceEvent { return s.events }
+func (s *socketServer) Addr() net.Addr {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.listener == nil {
+		if s.udp != nil {
+			return s.udp.LocalAddr()
+		}
 		return nil
 	}
 	return s.listener.Addr()
 }
-func (s *Stream) Start(parent context.Context) error {
+func (s *socketServer) Start(parent context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.started || s.closed {
@@ -74,38 +112,59 @@ func (s *Stream) Start(parent context.Context) error {
 			return err
 		}
 	}
-	l, err := (&net.ListenConfig{}).Listen(s.ctx, "tcp", net.JoinHostPort(s.Spec.Address, strconv.Itoa(int(s.Spec.Port))))
-	if err != nil {
-		return err
+	address := net.JoinHostPort(s.Spec.Address, strconv.Itoa(int(s.Spec.Port)))
+	var err error
+	if slices.Contains(s.Spec.Network, "tcp") {
+		s.listener, err = (&net.ListenConfig{}).Listen(s.ctx, "tcp", address)
+		if err != nil {
+			return err
+		}
+		if s.Spec.Port == 0 {
+			address = s.listener.Addr().String()
+		}
 	}
-	s.listener = l
+	if slices.Contains(s.Spec.Network, "udp") {
+		s.udp, err = (&net.ListenConfig{}).ListenPacket(s.ctx, "udp", address)
+		if err != nil {
+			if s.listener != nil {
+				s.listener.Close()
+			}
+			return err
+		}
+	}
 	context.AfterFunc(s.ctx, s.close)
-	s.wg.Add(1)
-	if s.Spec.Transport.Type == "ws" || s.Spec.Transport.Type == "httpupgrade" {
-		s.http = &http.Server{Handler: http.HandlerFunc(s.serveHTTP), ReadHeaderTimeout: s.Limits.HandshakeTimeout, MaxHeaderBytes: 8192, ConnContext: func(ctx context.Context, c net.Conn) context.Context {
-			return context.WithValue(s.ctx, carrierKey{}, c.(*trackedConn))
-		}}
-		s.http.SetKeepAlivesEnabled(false)
-		go func() { defer s.wg.Done(); s.failed(s.http.Serve(&streamListener{Listener: l, server: s})) }()
-	} else {
-		go s.accept()
+	if s.listener != nil {
+		s.wg.Add(1)
+		if s.upgrade != nil {
+			s.http = &http.Server{Handler: http.HandlerFunc(s.serveHTTP), ReadHeaderTimeout: s.Limits.HandshakeTimeout, MaxHeaderBytes: 8192, ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+				return context.WithValue(s.ctx, carrierKey{}, c.(*trackedConn))
+			}}
+			s.http.SetKeepAlivesEnabled(false)
+			go func() { defer s.wg.Done(); s.failed(s.http.Serve(&streamListener{Listener: s.listener, server: s})) }()
+		} else {
+			go s.accept()
+		}
 	}
-	s.events <- protocol.InstanceEvent{State: "running"}
+	if s.udp != nil {
+		s.wg.Add(1)
+		go func() { defer s.wg.Done(); s.failed(s.packet.Serve(s.ctx, s.udp)) }()
+	}
+	s.events <- InstanceEvent{State: "running"}
 	return nil
 }
-func (s *Stream) failed(err error) {
+func (s *socketServer) failed(err error) {
 	s.mu.Lock()
 	closed := s.closed || s.ctx.Err() != nil
 	s.mu.Unlock()
 	if !closed {
 		select {
-		case s.events <- protocol.InstanceEvent{State: "failed", Err: errors.New("transport listener failed")}:
+		case s.events <- InstanceEvent{State: "failed", Err: errors.New("transport listener failed")}:
 		default:
 		}
 		s.close()
 	}
 }
-func (s *Stream) accept() {
+func (s *socketServer) accept() {
 	defer s.wg.Done()
 	l := &streamListener{Listener: s.listener, server: s}
 	for {
@@ -118,7 +177,7 @@ func (s *Stream) accept() {
 		go func() { defer s.wg.Done(); s.serve(context.WithValue(s.ctx, carrierKey{}, c.(*trackedConn)), c) }()
 	}
 }
-func (s *Stream) serve(ctx context.Context, c net.Conn) {
+func (s *socketServer) serve(ctx context.Context, c net.Conn) {
 	carrier := ctx.Value(carrierKey{}).(*trackedConn)
 	// net/http clears deadlines during Hijack. Restore the original admission
 	// deadline so an upgraded client cannot hold a handshake slot forever.
@@ -132,7 +191,7 @@ func (s *Stream) serve(ctx context.Context, c net.Conn) {
 		}
 	}
 }
-func (s *Stream) serveHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *socketServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -141,41 +200,14 @@ func (s *Stream) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	s.wg.Add(1)
 	s.mu.Unlock()
 	defer s.wg.Done()
-	c := r.Context().Value(carrierKey{}).(*trackedConn)
 	if r.Method != "GET" || r.URL.EscapedPath() != s.Spec.Transport.Path || (s.Spec.Transport.Host != "" && !strings.EqualFold(r.Host, s.Spec.Transport.Host)) || r.ContentLength > 0 || len(r.TransferEncoding) > 0 {
 		w.Header().Set("Connection", "close")
 		http.NotFound(w, r)
 		return
 	}
-	if s.Spec.Transport.Type == "ws" {
-		ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true, CompressionMode: websocket.CompressionDisabled})
-		if err != nil {
-			return
-		}
-		defer ws.CloseNow()
-		conn := websocket.NetConn(s.ctx, ws, websocket.MessageBinary)
-		ws.SetReadLimit(1 << 20)
-		s.serve(r.Context(), conn)
-		return
-	}
-	if !headerToken(r.Header.Get("Connection"), "upgrade") || !strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
-		w.Header().Set("Connection", "close")
-		http.Error(w, "invalid upgrade", http.StatusBadRequest)
-		return
-	}
-	hijacked, rw, err := w.(http.Hijacker).Hijack()
-	if err != nil {
-		return
-	}
-	if _, err = rw.WriteString("HTTP/1.1 101 Switching Protocols\r\nConnection: upgrade\r\nUpgrade: websocket\r\n\r\n"); err == nil {
-		err = rw.Flush()
-	}
-	if err != nil {
-		c.Close()
-		return
-	}
-	s.serve(r.Context(), &readerConn{Conn: hijacked, reader: rw.Reader})
+	s.upgrade(s, w, r)
 }
+
 func headerToken(v, want string) bool {
 	for _, v := range strings.Split(v, ",") {
 		if strings.EqualFold(strings.TrimSpace(v), want) {
@@ -184,14 +216,14 @@ func headerToken(v, want string) bool {
 	}
 	return false
 }
-func (s *Stream) close() {
+func (s *socketServer) close() {
 	s.once.Do(func() {
 		s.mu.Lock()
 		s.closed = true
 		if s.cancel != nil {
 			s.cancel()
 		}
-		l, h := s.listener, s.http
+		l, h, udp := s.listener, s.http, s.udp
 		cs := make([]*trackedConn, 0, len(s.conns))
 		for c := range s.conns {
 			cs = append(cs, c)
@@ -207,20 +239,28 @@ func (s *Stream) close() {
 			for _, c := range cs {
 				c.Close()
 			}
+			if udp != nil {
+				udp.Close()
+			}
+			if s.packet != nil && s.packet.Close != nil {
+				// Stop's caller bounds its wait, while cleanup keeps ownership
+				// until completion so a later Stop can confirm resource release.
+				s.closeErr = errors.Join(s.closeErr, s.packet.Close(context.Background()))
+			}
 			s.wg.Wait()
 			if s.OnClose != nil {
-				_ = s.OnClose()
+				s.closeErr = errors.Join(s.closeErr, s.OnClose())
 			}
-			s.events <- protocol.InstanceEvent{State: "stopped"}
+			s.events <- InstanceEvent{State: "stopped"}
 			close(s.done)
 		}()
 	})
 }
-func (s *Stream) Stop(ctx context.Context) error {
+func (s *socketServer) Stop(ctx context.Context) error {
 	s.close()
 	select {
 	case <-s.done:
-		return nil
+		return s.closeErr
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -230,7 +270,7 @@ type carrierKey struct{}
 type trackedConn struct {
 	net.Conn
 	raw      net.Conn
-	server   *Stream
+	server   *socketServer
 	once     sync.Once
 	ready    sync.Once
 	done     chan struct{}
@@ -260,7 +300,7 @@ func (c *trackedConn) CloseWrite() error { return N.CloseWrite(c.Conn) }
 
 type streamListener struct {
 	net.Listener
-	server *Stream
+	server *socketServer
 }
 
 func (l *streamListener) Accept() (net.Conn, error) {
@@ -296,7 +336,7 @@ func (l *streamListener) Accept() (net.Conn, error) {
 }
 
 // Bridge releases the carrier handshake budget only after protocol authentication.
-type Bridge struct{ Handler protocol.RelayHandler }
+type Bridge struct{ Handler RelayHandler }
 
 func authenticated(ctx context.Context) {
 	if c, ok := ctx.Value(carrierKey{}).(*trackedConn); ok {

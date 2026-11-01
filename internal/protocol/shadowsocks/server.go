@@ -6,8 +6,6 @@ import (
 	"errors"
 	"net"
 	"net/netip"
-	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -22,163 +20,55 @@ import (
 
 var ErrStopped = errors.New("Shadowsocks instance stopped")
 
-// Server owns network resources; the upstream module only performs protocol I/O.
+// Server implements Shadowsocks framing, replay checks and UDP associations.
+// Socket creation and carrier lifetime belong to the selected transport factory.
 type Server struct {
-	spec             model.ListenerSpec
-	limits           model.Limits
-	handler          protocol.RelayHandler
-	method           *shadowaead.Method
-	service          SS.Service
-	saltSize         int
-	replay           saltWindow
-	mu               sync.Mutex
-	started, stopped bool
-	ctx              context.Context
-	cancel           context.CancelFunc
-	stopParent       func() bool
-	tcp              net.Listener
-	udp              *net.UDPConn
-	connections      map[net.Conn]struct{}
-	sessions         map[netip.AddrPort]*packetSession
-	pending          chan struct{}
-	wg               sync.WaitGroup
-	stopOnce         sync.Once
-	failOnce         sync.Once
-	done             chan struct{}
-	events           chan protocol.InstanceEvent
-	writeMu          sync.Mutex
-	queueMu          sync.Mutex
-	queuedBytes      int
+	limits      model.Limits
+	handler     protocol.RelayHandler
+	method      *shadowaead.Method
+	service     SS.Service
+	saltSize    int
+	replay      saltWindow
+	mu          sync.Mutex
+	stopped     bool
+	ctx         context.Context
+	udp         net.PacketConn
+	sessions    map[netip.AddrPort]*packetSession
+	wg          sync.WaitGroup
+	stopOnce    sync.Once
+	done        chan struct{}
+	writeMu     sync.Mutex
+	queueMu     sync.Mutex
+	queuedBytes int
 }
 
-func newServer(spec model.ListenerSpec, limits model.Limits, handler protocol.RelayHandler, method *shadowaead.Method) *Server {
-	return &Server{spec: spec, limits: limits, handler: handler, method: method,
-		connections: make(map[net.Conn]struct{}), sessions: make(map[netip.AddrPort]*packetSession),
-		pending: make(chan struct{}, limits.MaxPendingHandshakes), done: make(chan struct{}), events: make(chan protocol.InstanceEvent, 4)}
+func newServer(limits model.Limits, handler protocol.RelayHandler, method *shadowaead.Method) *Server {
+	return &Server{limits: limits, handler: handler, method: method, sessions: make(map[netip.AddrPort]*packetSession), done: make(chan struct{})}
 }
-
-func (s *Server) Start(parent context.Context) error {
+func (s *Server) ServePacket(ctx context.Context, conn net.PacketConn) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.started || s.stopped {
-		return errors.New("Shadowsocks instance cannot be started twice")
+	if s.stopped {
+		s.mu.Unlock()
+		return net.ErrClosed
 	}
-	if err := parent.Err(); err != nil {
-		return err
-	}
-	s.started = true
-	s.ctx, s.cancel = context.WithCancel(parent)
-	networks := s.spec.Network
-	if len(networks) == 0 {
-		networks = []string{"tcp", "udp"}
-	}
-	address := net.JoinHostPort(s.spec.Address, strconv.Itoa(int(s.spec.Port)))
-	var err error
-	if slices.Contains(networks, "tcp") {
-		s.tcp, err = (&net.ListenConfig{}).Listen(s.ctx, "tcp", address)
-		if err != nil {
-			s.cancel()
-			return err
-		}
-		// Port zero is only used by programmatic tests, never accepted in node YAML.
-		if s.spec.Port == 0 {
-			address = s.tcp.Addr().String()
-		}
-	}
-	if slices.Contains(networks, "udp") {
-		udpAddress, resolveErr := net.ResolveUDPAddr("udp", address)
-		if resolveErr != nil {
-			err = resolveErr
-		} else {
-			s.udp, err = net.ListenUDP("udp", udpAddress)
-		}
-		if err != nil {
-			if s.tcp != nil {
-				s.tcp.Close()
-			}
-			s.cancel()
-			return err
-		}
-	}
-	if s.tcp == nil && s.udp == nil {
-		s.cancel()
-		return errors.New("listener requires tcp or udp")
-	}
-	if s.tcp != nil {
-		s.wg.Add(1)
-		go s.acceptTCP()
-	}
-	if s.udp != nil {
-		s.wg.Add(1)
-		go s.readUDP()
-	}
-	s.stopParent = context.AfterFunc(s.ctx, s.initiateClose)
-	s.events <- protocol.InstanceEvent{State: "running"}
-	return nil
-}
-
-func (s *Server) Addr() net.Addr {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.tcp != nil {
-		return s.tcp.Addr()
-	}
-	if s.udp != nil {
-		return s.udp.LocalAddr()
-	}
-	return nil
-}
-
-func (s *Server) Events() <-chan protocol.InstanceEvent { return s.events }
-
-func (s *Server) fail(err error) {
-	s.mu.Lock()
-	stopping := s.stopped || s.ctx.Err() != nil
+	s.ctx, s.udp = ctx, conn
 	s.mu.Unlock()
-	if stopping {
-		return
-	}
-	s.failOnce.Do(func() { s.events <- protocol.InstanceEvent{State: "failed", Err: err}; s.initiateClose() })
+	return s.readUDP()
 }
-
-func (s *Server) initiateClose() {
+func (s *Server) ClosePacket(ctx context.Context) error {
 	s.stopOnce.Do(func() {
 		s.mu.Lock()
 		s.stopped = true
-		if s.cancel != nil {
-			s.cancel()
-		}
-		if s.stopParent != nil {
-			s.stopParent()
-		}
-		connections := make([]net.Conn, 0, len(s.connections))
-		for connection := range s.connections {
-			connections = append(connections, connection)
-		}
 		sessions := make([]*packetSession, 0, len(s.sessions))
 		for _, session := range s.sessions {
 			sessions = append(sessions, session)
 		}
-		tcp, udp := s.tcp, s.udp
 		s.mu.Unlock()
-		if tcp != nil {
-			tcp.Close()
-		}
-		if udp != nil {
-			udp.Close()
-		}
-		for _, connection := range connections {
-			connection.Close()
-		}
 		for _, session := range sessions {
 			session.Close()
 		}
-		go func() { s.wg.Wait(); s.events <- protocol.InstanceEvent{State: "stopped"}; close(s.done) }()
+		go func() { s.wg.Wait(); close(s.done) }()
 	})
-}
-
-func (s *Server) Stop(ctx context.Context) error {
-	s.initiateClose()
 	select {
 	case <-s.done:
 		return nil
@@ -188,61 +78,22 @@ func (s *Server) Stop(ctx context.Context) error {
 }
 
 type handshakeKey struct{}
-type handshake struct {
-	connection *saltConn
-	release    func()
-}
 
-func (s *Server) acceptTCP() {
-	defer s.wg.Done()
-	for {
-		connection, err := s.tcp.Accept()
-		if err != nil {
-			s.fail(err)
-			return
-		}
-		s.mu.Lock()
-		if s.stopped || len(s.connections) >= s.limits.MaxConnections {
-			s.mu.Unlock()
-			connection.Close()
-			continue
-		}
-		select {
-		case s.pending <- struct{}{}:
-		default:
-			s.mu.Unlock()
-			connection.Close()
-			continue
-		}
-		s.connections[connection] = struct{}{}
-		s.wg.Add(1)
-		s.mu.Unlock()
-		go func() {
-			defer s.wg.Done()
-			defer connection.Close()
-			defer func() { s.mu.Lock(); delete(s.connections, connection); s.mu.Unlock() }()
-			release := sync.OnceFunc(func() { <-s.pending })
-			defer release()
-			if err := connection.SetReadDeadline(time.Now().Add(s.limits.HandshakeTimeout)); err != nil {
-				return
-			}
-			captured := &saltConn{Conn: connection, size: s.saltSize}
-			ctx := context.WithValue(s.ctx, handshakeKey{}, handshake{connection: captured, release: release})
-			// A legacy handler owns this call until the shared relay reports completion.
-			_ = s.service.NewConnection(ctx, captured, M.Metadata{Source: M.SocksaddrFromNet(connection.RemoteAddr()).Unwrap()})
-		}()
+func (s *Server) ServeStream(ctx context.Context, c net.Conn, src M.Socksaddr, onClose N.CloseHandlerFunc) error {
+	captured := &saltConn{Conn: c, size: s.saltSize}
+	ctx = context.WithValue(ctx, handshakeKey{}, captured)
+	err := s.service.NewConnection(ctx, captured, M.Metadata{Source: src})
+	if onClose != nil {
+		onClose(err)
 	}
+	return err
 }
 
 func (s *Server) NewConnection(ctx context.Context, connection net.Conn, metadata M.Metadata) error {
-	state, ok := ctx.Value(handshakeKey{}).(handshake)
-	if !ok || !s.replay.accept(state.connection.salt[:state.connection.count]) {
+	state, ok := ctx.Value(handshakeKey{}).(*saltConn)
+	if !ok || !s.replay.accept(state.salt[:state.count]) {
 		return errors.New("replayed or invalid Shadowsocks handshake")
 	}
-	if err := connection.SetReadDeadline(time.Time{}); err != nil {
-		return err
-	}
-	state.release()
 	done := make(chan error, 1)
 	s.handler.NewConnectionEx(ctx, connection, metadata.Source, metadata.Destination, N.OnceClose(func(err error) { done <- err }))
 	return <-done
@@ -309,15 +160,13 @@ func (w *saltWindow) accept(salt []byte) bool {
 	return true
 }
 
-func (s *Server) readUDP() {
-	defer s.wg.Done()
+func (s *Server) readUDP() error {
 	for {
 		buffer := buf.NewSize(65535)
-		n, source, err := s.udp.ReadFromUDPAddrPort(buffer.FreeBytes())
+		n, remote, err := s.udp.ReadFrom(buffer.FreeBytes())
 		if err != nil {
 			buffer.Release()
-			s.fail(err)
-			return
+			return err
 		}
 		buffer.Truncate(n)
 		if n < s.saltSize+16 {
@@ -334,12 +183,12 @@ func (s *Server) readUDP() {
 			buffer.Release()
 			continue
 		}
-		source = netip.AddrPortFrom(source.Addr().Unmap(), source.Port())
+		source := M.SocksaddrFromNet(remote).Unwrap().AddrPort()
 		s.mu.Lock()
 		if s.stopped {
 			s.mu.Unlock()
 			buffer.Release()
-			return
+			return nil
 		}
 		session := s.sessions[source]
 		created := false

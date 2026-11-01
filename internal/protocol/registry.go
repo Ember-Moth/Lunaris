@@ -2,29 +2,27 @@
 package protocol
 
 import (
-	"context"
 	"fmt"
 	"reflect"
 	"slices"
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
+	"github.com/Ember-Moth/Lunaris/internal/transport"
 	"github.com/sagernet/sing/common/logger"
-	N "github.com/sagernet/sing/common/network"
 )
 
 // RelayHandler is the shared boundary for library-backed and native protocols.
-type RelayHandler interface {
-	N.TCPConnectionHandlerEx
-	N.UDPConnectionHandlerEx
-}
+type RelayHandler = transport.RelayHandler
 
 type Capabilities struct {
-	Type       model.ProtocolType `json:"type"`
-	TCP        bool               `json:"tcp"`
-	UDP        bool               `json:"udp"`
-	TCPRelay   bool               `json:"tcp_relay"`
-	UDPRelay   bool               `json:"udp_relay"`
-	Transports []string           `json:"transports,omitempty"`
+	Type        model.ProtocolType `json:"type"`
+	TCP         bool               `json:"tcp"`
+	UDP         bool               `json:"udp"`
+	TCPRelay    bool               `json:"tcp_relay"`
+	UDPRelay    bool               `json:"udp_relay"`
+	TLS         bool               `json:"tls"`
+	TLSRequired bool               `json:"tls_required"`
+	Transports  []string           `json:"transports,omitempty"`
 }
 
 // ResolvedListenerSpec is private to the runtime and must never be JSON encoded.
@@ -42,21 +40,13 @@ type Dependencies struct {
 	Logger  logger.ContextLogger
 }
 
-type InstanceEvent struct {
-	State string
-	Err   error
-}
-
-type Instance interface {
-	Start(context.Context) error
-	Events() <-chan InstanceEvent
-	Stop(context.Context) error
-}
+type InstanceEvent = transport.InstanceEvent
+type Instance = transport.Instance
 
 type Factory interface {
 	Capabilities() Capabilities
 	Validate(model.ListenerSpec) []model.FieldError
-	Build(ResolvedListenerSpec, Dependencies) (Instance, error)
+	Build(ResolvedListenerSpec, Dependencies) (transport.Binding, error)
 }
 
 // AssetValidator checks resolved secrets before a draft can be saved or applied.
@@ -90,7 +80,9 @@ func NewRegistry(factories ...Factory) (*Registry, error) {
 func (r *Registry) Capabilities() []Capabilities {
 	result := make([]Capabilities, 0, len(r.factories))
 	for _, factory := range r.factories {
-		result = append(result, factory.Capabilities())
+		caps := factory.Capabilities()
+		caps.Transports = slices.Clone(caps.Transports)
+		result = append(result, caps)
 	}
 	slices.SortFunc(result, func(a, b Capabilities) int {
 		if a.Type < b.Type {

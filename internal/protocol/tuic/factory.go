@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-package quic
+package tuic
 
 import (
 	"bytes"
-	"crypto/tls"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,10 +11,14 @@ import (
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
+	"github.com/Ember-Moth/Lunaris/internal/transport"
 	"github.com/gofrs/uuid/v5"
+	qtls "github.com/sagernet/sing-quic"
+	upstream "github.com/sagernet/sing-quic/tuic"
+	aTLS "github.com/sagernet/sing/common/tls"
 )
 
-type Factory struct{ Type model.ProtocolType }
+type Factory struct{}
 type User struct {
 	UUID          string `json:"uuid"`
 	CredentialRef string `json:"credential_ref"`
@@ -25,7 +29,7 @@ type Options struct {
 }
 
 func (f Factory) Capabilities() protocol.Capabilities {
-	return protocol.Capabilities{Type: f.Type, UDP: true, TCPRelay: true, UDPRelay: true, Transports: []string{"quic"}}
+	return protocol.Capabilities{Type: "tuic", UDP: true, TCPRelay: true, UDPRelay: true, TLS: true, TLSRequired: true, Transports: []string{"quic"}}
 }
 func (f Factory) parse(s model.ListenerSpec) (Options, error) {
 	var o Options
@@ -36,12 +40,6 @@ func (f Factory) parse(s model.ListenerSpec) (Options, error) {
 	}
 	if err := d.Decode(new(any)); err != io.EOF {
 		return o, errors.New("trailing protocol options")
-	}
-	if f.Type == "hysteria2" {
-		if len(o.Users) > 0 || o.CongestionControl != "" {
-			return o, errors.New("Hysteria2 uses credential_refs and automatic bandwidth")
-		}
-		return o, nil
 	}
 	if !slices.Contains([]string{"", "cubic", "new_reno", "bbr"}, o.CongestionControl) {
 		return o, errors.New("invalid TUIC congestion control")
@@ -70,45 +68,35 @@ func (f Factory) Validate(s model.ListenerSpec) []model.FieldError {
 	if len(s.CredentialRefs) == 0 {
 		return fail("credential_refs", "at least one credential is required")
 	}
-	if s.CertificateRef == "" {
-		return fail("certificate_ref", "QUIC requires a TLS certificate")
-	}
-	if (s.Transport.Type != "" && s.Transport.Type != "quic") || s.Transport.Path != "" || s.Transport.Host != "" {
-		return fail("transport", "this protocol requires native QUIC")
-	}
 	return nil
 }
-func (f Factory) ValidateAssets(r protocol.ResolvedListenerSpec) error {
-	seen := map[string]bool{}
+func (Factory) ValidateAssets(r protocol.ResolvedListenerSpec) error {
 	for _, ref := range r.Spec.CredentialRefs {
-		p := string(r.Credentials[ref])
-		if p == "" {
-			return errors.New("empty protocol credential")
+		if len(r.Credentials[ref]) == 0 {
+			return errors.New("empty TUIC credential")
 		}
-		if seen[p] && f.Type == "hysteria2" {
-			return errors.New("duplicate Hysteria2 password")
-		}
-		seen[p] = true
 	}
 	return nil
 }
-func (f Factory) Build(r protocol.ResolvedListenerSpec, d protocol.Dependencies) (protocol.Instance, error) {
-	if err := protocol.ValidateLimits(r.Limits); err != nil {
-		return nil, err
-	}
-	if fields := f.Validate(r.Spec); len(fields) > 0 {
-		return nil, errors.New(fields[0].Message)
-	}
-	if err := f.ValidateAssets(r); err != nil {
-		return nil, err
-	}
-	if d.Handler == nil {
-		return nil, errors.New("relay handler required")
-	}
-	cert, err := tls.X509KeyPair(r.Certificate, r.PrivateKey)
+func (f Factory) Build(r protocol.ResolvedListenerSpec, d protocol.Dependencies) (transport.Binding, error) {
+	opts, err := f.parse(r.Spec)
 	if err != nil {
-		return nil, errors.New("invalid QUIC TLS key pair")
+		return transport.Binding{}, err
 	}
-	opts, _ := f.parse(r.Spec)
-	return newServer(r, d, opts, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS13, NextProtos: []string{"h3"}}), nil
+	users := make([]string, len(opts.Users))
+	ids := make([][16]byte, len(users))
+	passwords := make([]string, len(users))
+	for i, u := range opts.Users {
+		users[i] = u.CredentialRef
+		ids[i] = [16]byte(uuid.FromStringOrNil(u.UUID))
+		passwords[i] = string(r.Credentials[u.CredentialRef])
+	}
+	return transport.Binding{QUIC: &transport.QUICHandler{ALPN: []string{"h3"}, NewService: func(ctx context.Context, tls aTLS.ServerConfig, options qtls.QUICOptions) (transport.QUICService, error) {
+		s, err := upstream.NewService[string](upstream.ServiceOptions{Context: ctx, Logger: d.Logger, TLSConfig: tls, QUICOptions: options, CongestionControl: opts.CongestionControl, AuthTimeout: r.Limits.HandshakeTimeout, UDPTimeout: r.Limits.UDPIdleTimeout, Handler: d.Handler})
+		if err != nil {
+			return nil, err
+		}
+		s.UpdateUsers(users, ids, passwords)
+		return s, nil
+	}}}, nil
 }

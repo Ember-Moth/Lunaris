@@ -16,6 +16,7 @@ import (
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/relay"
+	"github.com/Ember-Moth/Lunaris/internal/transport"
 	"github.com/sagernet/sing-shadowsocks/shadowaead"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -23,17 +24,17 @@ import (
 
 const testPassword = "lunaris-integration-test-password"
 
-func startServer(t *testing.T, method string, limits model.Limits, dialer N.Dialer) (*Server, *relay.Handler) {
+func startServer(t *testing.T, method string, limits model.Limits, dialer N.Dialer) (*testServer, *relay.Handler) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	flow := relay.New(ctx, dialer, limits)
 	options, _ := json.Marshal(Options{Method: method})
-	instance, err := (Factory{}).Build(protocol.ResolvedListenerSpec{Spec: model.ListenerSpec{ID: "test", Protocol: "shadowsocks", Address: "127.0.0.1", Network: []string{"tcp", "udp"}, Options: options, CredentialRefs: []string{"personal"}}, Limits: limits, Credentials: map[string][]byte{"personal": []byte(testPassword)}}, protocol.Dependencies{Handler: flow})
+	instance, err := buildTestServer(t, protocol.ResolvedListenerSpec{Spec: model.ListenerSpec{ID: "test", Protocol: "shadowsocks", Address: "127.0.0.1", Network: []string{"tcp", "udp"}, Options: options, CredentialRefs: []string{"personal"}}, Limits: limits, Credentials: map[string][]byte{"personal": []byte(testPassword)}}, protocol.Dependencies{Handler: flow})
 	if err != nil {
 		cancel()
 		t.Fatal(err)
 	}
-	server := instance.(*Server)
+	server := instance
 	t.Cleanup(func() {
 		cancel()
 		cleanup, stop := context.WithTimeout(context.Background(), 3*time.Second)
@@ -295,7 +296,7 @@ func TestUDPBindFailureReleasesTCPPort(t *testing.T) {
 	limits := model.DefaultLimits()
 	flow := relay.New(context.Background(), &egress.Direct{}, limits)
 	options, _ := json.Marshal(Options{Method: "aes-128-gcm"})
-	instance, err := (Factory{}).Build(protocol.ResolvedListenerSpec{Spec: model.ListenerSpec{ID: "bind", Address: "127.0.0.1", Port: uint16(occupied.LocalAddr().(*net.UDPAddr).Port), Options: options, CredentialRefs: []string{"test"}}, Limits: limits, Credentials: map[string][]byte{"test": []byte(testPassword)}}, protocol.Dependencies{Handler: flow})
+	instance, err := buildTestServer(t, protocol.ResolvedListenerSpec{Spec: model.ListenerSpec{ID: "bind", Address: "127.0.0.1", Port: uint16(occupied.LocalAddr().(*net.UDPAddr).Port), Options: options, CredentialRefs: []string{"test"}}, Limits: limits, Credentials: map[string][]byte{"test": []byte(testPassword)}}, protocol.Dependencies{Handler: flow})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,4 +312,30 @@ func TestUDPBindFailureReleasesTCPPort(t *testing.T) {
 		t.Fatalf("TCP port leaked after UDP failure: %v", err)
 	}
 	listener.Close()
+}
+
+type testServer struct {
+	*Server
+	instance transport.Instance
+}
+
+func (s *testServer) Start(ctx context.Context) error { return s.instance.Start(ctx) }
+func (s *testServer) Stop(ctx context.Context) error  { return s.instance.Stop(ctx) }
+func (s *testServer) Addr() net.Addr                  { return s.instance.(interface{ Addr() net.Addr }).Addr() }
+func buildTestServer(t *testing.T, r protocol.ResolvedListenerSpec, d protocol.Dependencies) (*testServer, error) {
+	t.Helper()
+	d.Handler = transport.Bridge{Handler: d.Handler}
+	s, err := (Factory{}).buildServer(r, d)
+	if err != nil {
+		return nil, err
+	}
+	networks := r.Spec.Network
+	if len(networks) == 0 {
+		networks = []string{"tcp", "udp"}
+	}
+	instance, err := (transport.NativeFactory{}).Build(transport.ResolvedSpec{Address: r.Spec.Address, Port: r.Spec.Port, Network: networks, Limits: r.Limits}, s.binding())
+	if err != nil {
+		return nil, err
+	}
+	return &testServer{Server: s, instance: instance}, nil
 }

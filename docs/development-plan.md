@@ -82,3 +82,14 @@ P3 时尚未执行真实 Linux 运行、外部客户端软件或公网网络验�
 范围与使用方法见[协议、传输与证书](protocols.md)。REALITY/Vision、gRPC/XHTTP 和其他扩展不在本轮。Linux 部署与公网/压力验收继续保留为 P4 运维后续工作。
 
 P4 本轮验证：`make check`、管理构建的 vet/race、`make check-web`、`go mod verify` 和 Linux amd64/arm64 的 CGO=0 交叉编译通过。官方 sing-box 1.14.4 发行客户端在 macOS arm64 上完成全部 18 个协议/传输/TLS 组合（AnyTLS 为 TCP，其余为 TCP+UDP）；可通过 `scripts/test-interop.py` 复跑。最终关闭流程调整后，受影响回归与全部客户端组合再次通过。
+
+## 独立工厂注册表
+
+- 协议注册表：七个协议各自提供工厂，负责协议选项、凭据和处理器构造。
+- 传输注册表：native、TCP、WebSocket、HTTPUpgrade、QUIC 五种工厂，负责监听与载体生命周期；TLS 保持为可选封装。
+- `internal/inbound` 负责组合校验与组装，文件模式和持久化服务复用该入口。
+- 新增自定义工厂真实转发、无效组合提前拒绝、能力快照和停止超时后继续清理测试。
+
+详细接口与扩展方式见[工厂注册表](factory-registries.md)。
+
+注册表重构验证：核心 `make check`、管理构建的 vet/race、Linux amd64/arm64 的 CGO=0 交叉编译通过；sing-box 1.14.4 发行客户端验证 19 个组合（新增 Shadowsocks 原生 TCP/UDP）。协议/传输扩展测试和证书材料隔离测试均通过。

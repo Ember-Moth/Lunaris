@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-package protocol
+package inbound
 
 import (
 	"bytes"
@@ -10,9 +10,9 @@ import (
 	"io"
 	"net/netip"
 	"slices"
-	"time"
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
+	"github.com/Ember-Moth/Lunaris/internal/protocol"
 )
 
 // Normalize validates the common runtime contract and copies every mutable
@@ -24,7 +24,7 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 	if input.Config.SchemaVersion != model.ConfigSchemaVersion {
 		return nil, errors.New("unsupported node schema_version")
 	}
-	if err := ValidateLimits(input.Config.Limits); err != nil {
+	if err := model.ValidateLimits(input.Config.Limits); err != nil {
 		return nil, err
 	}
 	result := &model.RuntimeConfig{Config: model.NodeConfig{SchemaVersion: input.Config.SchemaVersion, Limits: input.Config.Limits, Listeners: make([]model.ListenerSpec, 0, len(input.Config.Listeners))}, Credentials: make(map[string][]byte, len(input.Credentials))}
@@ -50,7 +50,7 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 			return nil, errors.New("listener ids must be non-empty and unique")
 		}
 		ids[spec.ID] = true
-		factory, ok := r.Lookup(spec.Protocol)
+		factory, ok := r.protocols.Lookup(spec.Protocol)
 		if !ok {
 			return nil, fmt.Errorf("listener %q: unsupported protocol %q", spec.ID, spec.Protocol)
 		}
@@ -67,7 +67,9 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 		}
 		caps := factory.Capabilities()
 		if spec.Transport.Type == "" && len(caps.Transports) > 0 {
-			spec.Transport.Type = caps.Transports[0]
+			if caps.Transports[0] != "native" {
+				spec.Transport.Type = caps.Transports[0]
+			}
 		}
 		if spec.CertificateRef != "" {
 			if _, exists := result.Certificates[spec.CertificateRef]; !exists {
@@ -75,11 +77,16 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 			}
 		}
 		spec.Network = slices.Clone(spec.Network)
+		_, carrier, err := r.factories(spec)
+		if err != nil {
+			return nil, fmt.Errorf("listener %q: %w", spec.ID, err)
+		}
+		transportCaps := carrier.Capabilities()
 		if len(spec.Network) == 0 {
-			if caps.TCP {
+			if caps.TCP && transportCaps.TCP {
 				spec.Network = append(spec.Network, "tcp")
 			}
-			if caps.UDP {
+			if caps.UDP && transportCaps.UDP {
 				spec.Network = append(spec.Network, "udp")
 			}
 		}
@@ -91,6 +98,9 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 			if (network != "tcp" && network != "udp") || (network == "tcp" && !caps.TCP) || (network == "udp" && !caps.UDP) || (i > 0 && spec.Network[i-1] == network) {
 				return nil, fmt.Errorf("listener %q: invalid or unsupported network", spec.ID)
 			}
+		}
+		if _, _, err := r.factories(spec); err != nil {
+			return nil, fmt.Errorf("listener %q: %w", spec.ID, err)
 		}
 		spec.CredentialRefs = slices.Clone(spec.CredentialRefs)
 		for _, ref := range spec.CredentialRefs {
@@ -115,9 +125,8 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 		if fields := factory.Validate(spec); len(fields) != 0 {
 			return nil, fmt.Errorf("listener %q: %s: %s", spec.ID, fields[0].Path, fields[0].Message)
 		}
-		if validator, ok := factory.(AssetValidator); ok {
-			cert := result.Certificates[spec.CertificateRef]
-			if err := validator.ValidateAssets(ResolvedListenerSpec{Spec: spec, Limits: result.Config.Limits, Credentials: result.Credentials, Certificate: cert.Certificate, PrivateKey: cert.PrivateKey}); err != nil {
+		if validator, ok := factory.(protocol.AssetValidator); ok {
+			if err := validator.ValidateAssets(protocol.ResolvedListenerSpec{Spec: spec, Limits: result.Config.Limits, Credentials: result.Credentials}); err != nil {
 				return nil, fmt.Errorf("listener %q: %w", spec.ID, err)
 			}
 		}
@@ -152,21 +161,4 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 		}
 	}
 	return result, nil
-}
-
-func ValidateLimits(l model.Limits) error {
-	for name, duration := range map[string]time.Duration{"dial_timeout": l.DialTimeout, "handshake_timeout": l.HandshakeTimeout, "udp_idle_timeout": l.UDPIdleTimeout, "shutdown_timeout": l.ShutdownTimeout} {
-		if duration <= 0 || duration > 24*time.Hour {
-			return fmt.Errorf("%s must be positive and no greater than 24h", name)
-		}
-	}
-	for name, count := range map[string]int{"max_connections": l.MaxConnections, "max_pending_handshakes": l.MaxPendingHandshakes, "max_udp_sessions": l.MaxUDPSessions, "max_udp_destinations": l.MaxUDPDestinations} {
-		if count <= 0 || count > 65536 {
-			return fmt.Errorf("%s must be between 1 and 65536", name)
-		}
-	}
-	if l.UDPQueueSize <= 0 || l.UDPQueueSize > 1024 {
-		return errors.New("udp_queue_size must be between 1 and 1024")
-	}
-	return nil
 }

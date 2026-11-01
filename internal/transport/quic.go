@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-package quic
+package transport
 
 import (
 	"context"
@@ -10,25 +10,15 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/Ember-Moth/Lunaris/internal/protocol"
-	"github.com/Ember-Moth/Lunaris/internal/transport"
-	"github.com/gofrs/uuid/v5"
+	"github.com/Ember-Moth/Lunaris/internal/model"
 	Q "github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
 	qtls "github.com/sagernet/sing-quic"
-	"github.com/sagernet/sing-quic/hysteria2"
-	"github.com/sagernet/sing-quic/tuic"
-	"github.com/sagernet/sing/common/logger"
 )
 
-type service interface {
-	Start(net.PacketConn) error
-	Close() error
-}
-type Server struct {
-	resolved        protocol.ResolvedListenerSpec
-	deps            protocol.Dependencies
-	options         Options
+type quicServer struct {
+	resolved        ResolvedSpec
+	binding         *QUICHandler
 	tls             *tls.Config
 	mu              sync.Mutex
 	started, closed bool
@@ -36,22 +26,48 @@ type Server struct {
 	cancel          context.CancelFunc
 	socket          net.PacketConn
 	transport       *Q.Transport
-	service         service
+	service         QUICService
 	total, pending  int
 	wg              sync.WaitGroup
 	once            sync.Once
 	done            chan struct{}
-	events          chan protocol.InstanceEvent
+	events          chan InstanceEvent
 }
 
-func newServer(r protocol.ResolvedListenerSpec, d protocol.Dependencies, o Options, t *tls.Config) *Server {
-	if d.Logger == nil {
-		d.Logger = logger.NOP()
-	}
-	return &Server{resolved: r, deps: d, options: o, tls: t, done: make(chan struct{}), events: make(chan protocol.InstanceEvent, 4)}
+type QUICFactory struct{}
+
+func (QUICFactory) Capabilities() Capabilities {
+	return Capabilities{Type: "quic", UDP: true, TLS: true}
 }
-func (s *Server) Events() <-chan protocol.InstanceEvent { return s.events }
-func (s *Server) Addr() net.Addr {
+func (QUICFactory) Validate(s model.ListenerSpec) []model.FieldError {
+	if s.CertificateRef == "" {
+		return field("certificate_ref", "QUIC requires a TLS certificate")
+	}
+	return validatePlain(s)
+}
+func (QUICFactory) Build(r ResolvedSpec, b Binding) (Instance, error) {
+	if err := model.ValidateLimits(r.Limits); err != nil {
+		return nil, err
+	}
+	if b.QUIC == nil || b.QUIC.NewService == nil {
+		return nil, errors.New("QUIC protocol handler required")
+	}
+	if b.QUIC.ReservedStreams < 0 || b.QUIC.ReservedStreams > 16 {
+		return nil, errors.New("invalid reserved QUIC stream count")
+	}
+	cfg, err := serverTLSConfig(r, b.QUIC.ALPN)
+	if err != nil {
+		return nil, err
+	}
+	if cfg == nil {
+		return nil, errors.New("QUIC certificate required")
+	}
+	cfg.MinVersion = tls.VersionTLS13
+	return &quicServer{resolved: r, binding: b.QUIC, tls: cfg, done: make(chan struct{}), events: make(chan InstanceEvent, 4)}, nil
+}
+
+func (s *quicServer) Events() <-chan InstanceEvent { return s.events }
+func (s *quicServer) Addr() net.Addr {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.socket == nil {
@@ -59,7 +75,7 @@ func (s *Server) Addr() net.Addr {
 	}
 	return s.socket.LocalAddr()
 }
-func (s *Server) Start(parent context.Context) error {
+func (s *quicServer) Start(parent context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.started || s.closed {
@@ -71,44 +87,18 @@ func (s *Server) Start(parent context.Context) error {
 	s.started = true
 	s.ctx, s.cancel = context.WithCancel(parent)
 	r := s.resolved
-	cfg := &serverTLS{TLS: &transport.TLS{Config: s.tls, Timeout: r.Limits.HandshakeTimeout}, owner: s}
+	cfg := &quicTLS{TLS: &TLS{Config: s.tls, Timeout: r.Limits.HandshakeTimeout}, owner: s}
 	qopts := qtls.QUICOptions{IdleTimeout: r.Limits.UDPIdleTimeout, MaxConcurrentStreams: r.Limits.MaxConnections, StreamReceiveWindow: 1 << 20, ConnectionReceiveWindow: 4 << 20}
-	if r.Spec.Protocol == "hysteria2" {
-		// Reserve one HTTP/3 authentication stream in addition to payload flows.
-		qopts.MaxConcurrentStreams++
-	}
+	qopts.MaxConcurrentStreams += s.binding.ReservedStreams
 	var err error
-	if r.Spec.Protocol == "hysteria2" {
-		svc, e := hysteria2.NewService[string](hysteria2.ServiceOptions{Context: s.ctx, Logger: s.deps.Logger, TLSConfig: cfg, QUICOptions: qopts, IgnoreClientBandwidth: true, UDPTimeout: r.Limits.UDPIdleTimeout, Handler: s.deps.Handler})
-		err = e
-		if err == nil {
-			passwords := make([]string, len(r.Spec.CredentialRefs))
-			for i, ref := range r.Spec.CredentialRefs {
-				passwords[i] = string(r.Credentials[ref])
-			}
-			svc.UpdateUsers(r.Spec.CredentialRefs, passwords)
-			s.service = svc
-		}
-	} else {
-		svc, e := tuic.NewService[string](tuic.ServiceOptions{Context: s.ctx, Logger: s.deps.Logger, TLSConfig: cfg, QUICOptions: qopts, CongestionControl: s.options.CongestionControl, AuthTimeout: r.Limits.HandshakeTimeout, UDPTimeout: r.Limits.UDPIdleTimeout, Handler: s.deps.Handler})
-		err = e
-		if err == nil {
-			users := make([]string, len(s.options.Users))
-			ids := make([][16]byte, len(users))
-			passwords := make([]string, len(users))
-			for i, u := range s.options.Users {
-				users[i] = u.CredentialRef
-				ids[i] = [16]byte(uuid.FromStringOrNil(u.UUID))
-				passwords[i] = string(r.Credentials[u.CredentialRef])
-			}
-			svc.UpdateUsers(users, ids, passwords)
-			s.service = svc
-		}
-	}
+	s.service, err = s.binding.NewService(s.ctx, cfg, qopts)
 	if err != nil {
 		return err
 	}
-	s.socket, err = (&net.ListenConfig{}).ListenPacket(s.ctx, "udp", net.JoinHostPort(r.Spec.Address, strconv.Itoa(int(r.Spec.Port))))
+	if s.service == nil {
+		return errors.New("QUIC protocol constructor returned no service")
+	}
+	s.socket, err = (&net.ListenConfig{}).ListenPacket(s.ctx, "udp", net.JoinHostPort(r.Address, strconv.Itoa(int(r.Port))))
 	if err != nil {
 		return err
 	}
@@ -116,10 +106,10 @@ func (s *Server) Start(parent context.Context) error {
 		return err
 	}
 	context.AfterFunc(s.ctx, s.close)
-	s.events <- protocol.InstanceEvent{State: "running"}
+	s.events <- InstanceEvent{State: "running"}
 	return nil
 }
-func (s *Server) close() {
+func (s *quicServer) close() {
 	s.once.Do(func() {
 		s.mu.Lock()
 		s.closed = true
@@ -139,12 +129,12 @@ func (s *Server) close() {
 				sock.Close()
 			}
 			s.wg.Wait()
-			s.events <- protocol.InstanceEvent{State: "stopped"}
+			s.events <- InstanceEvent{State: "stopped"}
 			close(s.done)
 		}()
 	})
 }
-func (s *Server) Stop(ctx context.Context) error {
+func (s *quicServer) Stop(ctx context.Context) error {
 	s.close()
 	select {
 	case <-s.done:
@@ -157,11 +147,11 @@ func (s *Server) Stop(ctx context.Context) error {
 type slotKey struct{}
 type slot struct {
 	once sync.Once
-	s    *Server
+	s    *quicServer
 }
 
 func (v *slot) ready() { v.once.Do(func() { v.s.mu.Lock(); v.s.pending--; v.s.mu.Unlock() }) }
-func (s *Server) admit(ctx context.Context, _ *Q.ClientInfo) (context.Context, error) {
+func (s *quicServer) admit(ctx context.Context, _ *Q.ClientInfo) (context.Context, error) {
 	s.mu.Lock()
 	if s.closed || s.total >= s.resolved.Limits.MaxConnections || s.pending >= s.resolved.Limits.MaxPendingHandshakes {
 		s.mu.Unlock()
@@ -178,12 +168,12 @@ func (s *Server) admit(ctx context.Context, _ *Q.ClientInfo) (context.Context, e
 
 // Closing quic-go's listener alone leaves accepted sessions alive. Own and close
 // the transport too, and account for handshakes before protocol authentication.
-type serverTLS struct {
-	*transport.TLS
-	owner *Server
+type quicTLS struct {
+	*TLS
+	owner *quicServer
 }
 
-func (t *serverTLS) Listen(c net.PacketConn, cfg *Q.Config) (qtls.Listener, error) {
+func (t *quicTLS) Listen(c net.PacketConn, cfg *Q.Config) (qtls.Listener, error) {
 	s := t.owner
 	// HTTP/3 needs control/QPACK streams; TUIC also authenticates on a
 	// unidirectional stream. These must work even with one allowed UDP flow.
@@ -201,14 +191,14 @@ func (t *serverTLS) Listen(c net.PacketConn, cfg *Q.Config) (qtls.Listener, erro
 	}
 	return &trackedListener{Listener: l, owner: s}, nil
 }
-func (t *serverTLS) ListenEarly(net.PacketConn, *Q.Config) (qtls.EarlyListener, error) {
+func (t *quicTLS) ListenEarly(net.PacketConn, *Q.Config) (qtls.EarlyListener, error) {
 	return nil, errors.New("QUIC 0-RTT is disabled")
 }
-func (t *serverTLS) ConfigureHTTP3() { http3.ConfigureTLSConfig(t.Config) }
+func (t *quicTLS) ConfigureHTTP3() { http3.ConfigureTLSConfig(t.Config) }
 
 type trackedListener struct {
 	qtls.Listener
-	owner *Server
+	owner *quicServer
 }
 
 func (l *trackedListener) Accept(ctx context.Context) (*Q.Conn, error) {
@@ -225,7 +215,7 @@ func (l *trackedListener) Accept(ctx context.Context) (*Q.Conn, error) {
 	s.mu.Unlock()
 	if !closed {
 		select {
-		case s.events <- protocol.InstanceEvent{State: "failed", Err: errors.New("QUIC listener failed")}:
+		case s.events <- InstanceEvent{State: "failed", Err: errors.New("QUIC listener failed")}:
 		default:
 		}
 		go s.close()

@@ -81,6 +81,8 @@ Hysteria2 使用自适应带宽模式；本轮不暴露固定 Brutal 带宽或�
 
 ## 生命周期和资源边界
 
+所有协议通过独立的协议注册表与传输注册表组装；Shadowsocks 的原生 TCP/UDP 和 QUIC 监听也由传输实例持有。实现与扩展契约见[工厂注册表](factory-registries.md)。
+
 流式监听器在接收连接时登记所有载体，包括尚未认证的 TLS 和已经升级的 HTTP 连接。握手超时、待认证名额和总连接数覆盖这些载体。`net/http` 升级后会清除期限，适配层恢复原握手期限；收到首个已认证的转发回调后释放待握手名额。
 
 QUIC 在 transport 的连接回调中限制总连接和进行中的 TLS 握手；协议层还执行认证。限制双向流数、单向流数和接收窗口；共享 relay 分别限制 TCP 流和 UDP 会话。停止时同时关闭 QUIC listener、transport 和 UDP socket，回收已接受会话。HTTP/3 控制流和 TUIC 认证流另预留少量协议名额，因此即使 TCP/UDP 流上限设置为 1 也能完成握手。
@@ -98,9 +100,9 @@ make build
 python3 scripts/test-interop.py --client /path/to/sing-box --server bin/lunaris
 ```
 
-脚本只绑定回环地址，生成临时证书和配置，不下载客户端、不设置系统代理。使用正式发行客户端进程测试全部 18 个传输/TLS 组合；AnyTLS 测试 TCP，其余测试 TCP 和 UDP。VLESS/VMess 客户端设置 `packet_encoding: ""` 使用原生 UDP 帧，避免启用额外封装。
+脚本只绑定回环地址，生成临时证书和配置，不下载客户端、不设置系统代理。使用正式发行客户端进程测试 19 个协议/传输/TLS 组合（包含原生 Shadowsocks）；AnyTLS 测试 TCP，其余测试 TCP 和 UDP。VLESS/VMess 客户端设置 `packet_encoding: ""` 使用原生 UDP 帧，避免启用额外封装。
 
-验证记录：2026-11-01，macOS arm64 上使用官方 sing-box 1.14.4（发行 SHA-256 已核对）完成 18 个组合。正式发行客户端是独立进程，但与服务端共享部分 SagerNet 协议库来源；此结果不代表所有其他客户端实现都已验证。
+验证记录：2026-11-01，macOS arm64 上使用官方 sing-box 1.14.4（发行 SHA-256 已核对）完成 18 个组合。正式发行客户端是独立进程，但与服务端共享部分 SagerNet 协议库来源；此结果不代表所有其他客户端实现都已验证。独立工厂注册表重构后，同一发行客户端再次通过 19 个组合，新增 Shadowsocks 原生 TCP/UDP 覆盖。
 
 本轮不宣称支持 REALITY、Vision、gRPC、XHTTP、SS2022、WebSocket early-data、sing-mux、PacketAddr/XUDP 或 AnyTLS 的 UoT。部分库能解析额外指令，不作为已验证产品能力。
 

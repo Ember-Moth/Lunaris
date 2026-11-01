@@ -10,8 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/inbound"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
+	"github.com/Ember-Moth/Lunaris/internal/transport"
 )
 
 type scriptedFactory struct {
@@ -31,10 +33,10 @@ type scriptedInstance struct {
 }
 
 func (*scriptedFactory) Capabilities() protocol.Capabilities {
-	return protocol.Capabilities{Type: "scripted", TCP: true}
+	return protocol.Capabilities{Type: "scripted", TCP: true, Transports: []string{"scripted"}}
 }
 func (*scriptedFactory) Validate(model.ListenerSpec) []model.FieldError { return nil }
-func (f *scriptedFactory) Build(spec protocol.ResolvedListenerSpec, _ protocol.Dependencies) (protocol.Instance, error) {
+func (f *scriptedFactory) Build(spec protocol.ResolvedListenerSpec, _ protocol.Dependencies) (transport.Binding, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.counts == nil {
@@ -43,7 +45,7 @@ func (f *scriptedFactory) Build(spec protocol.ResolvedListenerSpec, _ protocol.D
 	f.counts[spec.Spec.ID]++
 	instance := &scriptedInstance{factory: f, spec: spec.Spec, number: f.counts[spec.Spec.ID], events: make(chan protocol.InstanceEvent, 8)}
 	f.instances = append(f.instances, instance)
-	return instance, nil
+	return transport.Binding{}, nil
 }
 func (f *scriptedFactory) last(id string) *scriptedInstance {
 	f.mu.Lock()
@@ -86,7 +88,9 @@ func fakeConfig() *model.RuntimeConfig {
 
 func startFake(t *testing.T, f *scriptedFactory) *Runtime {
 	t.Helper()
-	registry, _ := protocol.NewRegistry(f)
+	p, _ := protocol.NewRegistry(f)
+	tr, _ := transport.NewRegistry(scriptedTransport{factory: f})
+	registry, _ := inbound.NewRegistry(p, tr)
 	runtime, err := Start(context.Background(), fakeConfig(), registry, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -280,4 +284,22 @@ func TestCanceledApplyRestoresBaselineWithoutCancelingRuntime(t *testing.T) {
 	if status.Closed || status.Degraded || status.Revision != 1 {
 		t.Fatalf("cancellation destroyed baseline: %+v", status)
 	}
+}
+
+// The fake carrier exposes lifecycle failures without opening real sockets.
+// Runtime composition builds the protocol and carrier consecutively.
+type scriptedTransport struct{ factory *scriptedFactory }
+
+func (scriptedTransport) Capabilities() transport.Capabilities {
+	return transport.Capabilities{Type: "scripted", TCP: true}
+}
+func (scriptedTransport) Validate(model.ListenerSpec) []model.FieldError { return nil }
+func (t scriptedTransport) Build(r transport.ResolvedSpec, _ transport.Binding) (transport.Instance, error) {
+	t.factory.mu.Lock()
+	defer t.factory.mu.Unlock()
+	i := t.factory.instances[len(t.factory.instances)-1]
+	if i.spec.Port != r.Port {
+		return nil, errors.New("scripted transport construction mismatch")
+	}
+	return i, nil
 }

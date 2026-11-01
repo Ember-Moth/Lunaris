@@ -49,7 +49,6 @@ func start(t *testing.T, kind, carrier string, secure bool, limits model.Limits)
 	ctx := testutil.Context(t)
 	cert, tlsConfig := testutil.Certificate(t)
 	registry, _ := builtin.NewRegistry()
-	factory, _ := registry.Lookup(model.ProtocolType(kind))
 	secret := password
 	if kind == "vless" || kind == "vmess" {
 		secret = userID
@@ -70,7 +69,7 @@ func start(t *testing.T, kind, carrier string, secure bool, limits model.Limits)
 		spec.Options = []byte(`{"users":[{"uuid":"` + userID + `","credential_ref":"one"},{"uuid":"ab20e8ef-131d-448d-a58d-b6d81e25073b","credential_ref":"two"}]}`)
 	}
 	flow := relay.New(ctx, &egress.Direct{}, limits)
-	instance, err := factory.Build(protocol.ResolvedListenerSpec{Spec: spec, Limits: limits, Credentials: map[string][]byte{"one": []byte(secret), "two": []byte(second)}, Certificate: cert.Certificate, PrivateKey: cert.PrivateKey}, protocol.Dependencies{Handler: flow, Logger: logger.NOP()})
+	instance, err := registry.Build(protocol.ResolvedListenerSpec{Spec: spec, Limits: limits, Credentials: map[string][]byte{"one": []byte(secret), "two": []byte(second)}, Certificate: cert.Certificate, PrivateKey: cert.PrivateKey}, protocol.Dependencies{Handler: flow, Logger: logger.NOP()})
 	if err != nil {
 		t.Fatal(err)
 	}

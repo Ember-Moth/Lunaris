@@ -114,7 +114,7 @@ def main():
     args = parser.parse_args()
     client, server = str(args.client.resolve()), str(args.server.resolve())
     subprocess.run([client, "version"], check=True)
-    matrix = []
+    matrix = [("shadowsocks", "native", False)]
     for kind in ("vless", "vmess", "trojan"):
         for carrier in ("tcp", "ws", "httpupgrade"):
             for secure in ((True,) if kind == "trojan" else (False, True)):
@@ -140,7 +140,11 @@ def main():
             if carrier in ("ws", "httpupgrade"):
                 transport.update(path="/proxy", host="localhost")
             options = {"users": [{"uuid": UUID, "credential_ref": ref}]} if kind == "tuic" else {}
-            text += f"  - id: test-{index}\n    protocol: {kind}\n    address: 127.0.0.1\n    port: {endpoint}\n    credential_refs: [{ref}]\n    transport: {json.dumps(transport)}\n    options: {json.dumps(options)}\n"
+            if kind == "shadowsocks":
+                options = {"method": "aes-128-gcm"}
+            text += f"  - id: test-{index}\n    protocol: {kind}\n    address: 127.0.0.1\n    port: {endpoint}\n    credential_refs: [{ref}]\n    options: {json.dumps(options)}\n"
+            if carrier != "native":
+                text += f"    transport: {json.dumps(transport)}\n"
             if secure:
                 text += "    certificate_ref: tls\n"
         node.write_text(text)
@@ -159,8 +163,10 @@ def main():
             outbound = {"type": kind, "tag": "proxy", "server": "127.0.0.1", "server_port": endpoint}
             if kind in ("vless", "vmess", "tuic"):
                 outbound["uuid"] = UUID
-            if kind in ("trojan", "anytls", "hysteria2", "tuic"):
+            if kind in ("shadowsocks", "trojan", "anytls", "hysteria2", "tuic"):
                 outbound["password"] = PASSWORD
+            if kind == "shadowsocks":
+                outbound["method"] = "aes-128-gcm"
             if kind == "vmess":
                 outbound.update(security="aes-128-gcm", alter_id=0)
             if kind in ("vless", "vmess"):

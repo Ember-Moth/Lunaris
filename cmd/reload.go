@@ -7,8 +7,8 @@ import (
 	"log/slog"
 
 	"github.com/Ember-Moth/Lunaris/internal/config"
+	"github.com/Ember-Moth/Lunaris/internal/inbound"
 	"github.com/Ember-Moth/Lunaris/internal/node"
-	"github.com/Ember-Moth/Lunaris/internal/protocol"
 )
 
 type nodeSignals struct{ reload, status <-chan struct{} }
@@ -19,7 +19,7 @@ type reloadResult struct {
 
 // Reload work runs outside the signal loop. Status and shutdown stay responsive,
 // and repeated reload requests coalesce into one additional read of the file.
-func watchNode(ctx context.Context, path string, registry *protocol.Registry, runtime *node.Runtime, events nodeSignals, log *slog.Logger) error {
+func watchNode(ctx context.Context, path string, registry *inbound.Registry, runtime *node.Runtime, events nodeSignals, log *slog.Logger) error {
 	results := make(chan reloadResult, 1)
 	busy, pending := false, false
 	start := func() {
