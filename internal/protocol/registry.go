@@ -4,6 +4,7 @@ package protocol
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
@@ -27,9 +28,10 @@ type Capabilities struct {
 // Factories receive their own immutable snapshot, including resolved assets.
 type ResolvedListenerSpec struct {
 	Spec        model.ListenerSpec
-	Credentials map[string][]byte
-	Certificate []byte
-	PrivateKey  []byte
+	Limits      model.Limits
+	Credentials map[string][]byte `json:"-"`
+	Certificate []byte            `json:"-"`
+	PrivateKey  []byte            `json:"-"`
 }
 
 type Dependencies struct {
@@ -62,7 +64,7 @@ type Registry struct {
 func NewRegistry(factories ...Factory) (*Registry, error) {
 	r := &Registry{factories: make(map[model.ProtocolType]Factory)}
 	for _, factory := range factories {
-		if factory == nil {
+		if factory == nil || (reflect.ValueOf(factory).Kind() == reflect.Pointer && reflect.ValueOf(factory).IsNil()) {
 			return nil, fmt.Errorf("nil protocol factory")
 		}
 		kind := factory.Capabilities().Type

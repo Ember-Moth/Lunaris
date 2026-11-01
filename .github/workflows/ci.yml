@@ -27,6 +27,8 @@ jobs:
           cache: true
       - run: make install
       - run: make check
+      - run: make install-web
+      - run: make check-web
       - name: Verify generated API types
         run: git diff --exit-code -- web/src/api/schema.d.ts
       - name: Cross-build Linux binaries

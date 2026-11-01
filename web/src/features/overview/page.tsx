@@ -37,9 +37,9 @@ export function OverviewPage() {
           <CardHeader>
             <Radio className="size-5 text-muted-foreground" aria-hidden="true" />
             <CardTitle className="pt-4">代理监听</CardTitle>
-            <CardDescription>当前版本尚未接入代理协议，未启动代理监听。</CardDescription>
+            <CardDescription>Web 配置尚未接入节点运行时。</CardDescription>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">节点配置、凭据和证书管理将在后续版本开放。</CardContent>
+          <CardContent className="text-sm text-muted-foreground">当前通过 YAML 文件运行节点。Web 配置、凭据和证书管理将在后续版本开放。</CardContent>
         </Card>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-dashed p-5 text-sm">

@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/cloudwego/hertz v0.10.6
 	github.com/sagernet/sing v0.9.6
+	github.com/sagernet/sing-shadowsocks v0.2.9
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.61.1
@@ -29,6 +30,7 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
+	golang.org/x/crypto v0.23.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
 	modernc.org/libc v1.79.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

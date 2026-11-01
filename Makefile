@@ -1,28 +1,37 @@
-.PHONY: install web build dev check test clean
+.PHONY: install install-web web build build-web dev check check-web test clean
 
 # The management API uses encoding/json for stable Go toolchain compatibility.
 GO_BUILD_TAGS ?= stdjson
 
 install:
-	pnpm --dir web install --frozen-lockfile
 	go mod download
+
+install-web: install
+	pnpm --dir web install --frozen-lockfile
 
 web:
 	pnpm --dir web build
 
-build: web
+build:
 	go build -tags '$(GO_BUILD_TAGS)' -trimpath -o bin/lunaris .
 
-dev: web
-	go run -tags '$(GO_BUILD_TAGS)' . serve
+build-web: web
+	go build -tags '$(GO_BUILD_TAGS),webui' -trimpath -o bin/lunaris-web .
 
-check: web
-	pnpm --dir web lint
+dev:
+	go run -tags '$(GO_BUILD_TAGS)' . run --config examples/shadowsocks.yaml
+
+check:
 	sh scripts/check-modules.sh
 	go vet -tags '$(GO_BUILD_TAGS)' ./...
 	go test -tags '$(GO_BUILD_TAGS)' -race ./...
 
-test: web
+check-web: web
+	pnpm --dir web lint
+	go vet -tags '$(GO_BUILD_TAGS),webui' ./...
+	go test -tags '$(GO_BUILD_TAGS),webui' -race ./...
+
+test:
 	go test -tags '$(GO_BUILD_TAGS)' ./...
 
 clean:

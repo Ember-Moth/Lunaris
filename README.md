@@ -34,7 +34,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 | [`sing-quic`](https://github.com/SagerNet/sing-quic) | Hysteria2、TUIC 等 QUIC 协议服务 |
 | [`sing-anytls`](https://github.com/SagerNet/sing-anytls) | AnyTLS 协议服务 |
 
-这是候选依赖清单，不代表已实现的协议支持。按实际启用的功能引入依赖，具体版本在接入和互通验证后锁定。
+除当前已接入的 Shadowsocks AEAD 外，其余为候选依赖，不代表已实现的协议支持。直接使用上游 Go module 并锁定版本，不维护本地 vendor、副本模块或本地 replace。
 
 ## 架构与技术栈
 
@@ -49,41 +49,72 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 - [总体架构](docs/architecture.md)：模块边界、技术选择、协议接入、部署与实施顺序。
 - [配置生命周期](docs/configuration-lifecycle.md)：版本、应用流程、失败补偿与崩溃恢复。
 - [管理 API 契约](docs/management-api.md)：初始化、认证、配置、资产、状态与幂等交互。
+- [Polaris 参考对照](docs/polaris-reference.md)：可采用的协议与生命周期经验，以及本地补丁的复用边界。
+- [开发计划](docs/development-plan.md)：先完成节点核心，再实现 HTTP API 与 Web。
 
 ## 当前状态
 
-已建立可构建、可启动的工程骨架：Hertz 服务、React + shadcn/ui 页面、前端资源内嵌、YAML 启动配置、SQLite 初始迁移与目录锁、sing 协议接口和 OpenAPI 类型生成。
+已实现第一阶段的文件模式节点核心：严格 YAML 校验、环境变量/文件凭据、共享 TCP/UDP 转发、直接出口、监听器启动失败清理、关闭与资源限制，以及 Shadowsocks AEAD。
 
-当前仅提供管理服务健康检查和启动页面；管理员初始化、登录、配置应用、证书管理及代理协议尚未实现，未注册任何代理协议。服务暂时只允许绑定回环地址。
+| 方法 | TCP | UDP |
+| --- | --- | --- |
+| `aes-128-gcm` | 已实现 | 已实现 |
+| `aes-256-gcm` | 已实现 | 已实现 |
+| `chacha20-ietf-poly1305` | 已实现 | 已实现 |
 
-首版应打通“安装启动 → 浏览器初始化与登录 → 创建协议监听 → 保存并应用 → 客户端连接”的完整流程。首批协议和具体传输组合尚未确定。
+每个监听器使用一份凭据，可配置多个监听器。当前不支持 SS2022、单端口多用户、Mux/UoT、TLS 插件或配置热更新。修改配置后重启文件模式进程。
+
+管理界面骨架和 SQLite 初始迁移保留。管理员认证、配置版本应用、管理 API 和 Web 操作按开发计划后置；管理骨架尚未连接代理运行时。协议细节与验证范围见 [Shadowsocks 实现说明](docs/shadowsocks.md)。
 
 ## 本地开发
 
-需要 Go 1.26 或更新版本、Node.js 24 和 pnpm 12.16.1。先构建前端，再编译或测试 Go，确保二进制包含真实前端资源。
+节点核心只需要 Go 1.26 或更新版本，不需要 Node.js 或前端构建。
 
 ```sh
 make install
 make build
-./bin/lunaris serve --config config.example.yaml
+export LUNARIS_SS_PASSWORD="$(./bin/lunaris keygen)"
+./bin/lunaris check --config examples/shadowsocks.yaml
+./bin/lunaris run --config examples/shadowsocks.yaml
 ```
 
-打开 `http://127.0.0.1:9080`。进程入口是根目录 `main.go`，命令与依赖组装在 `cmd/run.go`。YAML 中的相对数据目录以配置文件所在目录为基准，命令行参数可覆盖地址与数据目录。
+示例在 `127.0.0.1:8388` 同时监听 TCP/UDP；服务器部署时在 YAML 中明确设置所需监听地址，并在客户端使用相同方法和密码。进程入口是根目录 `main.go`，命令分发在 `cmd/run.go`。
 
 ```yaml
-data_dir: ./data
-admin:
-  listen: 127.0.0.1:9080
+schema_version: 1
+credentials:
+  - id: personal
+    secret_env: LUNARIS_SS_PASSWORD
+listeners:
+  - id: ss-main
+    protocol: shadowsocks
+    address: 127.0.0.1
+    port: 8388
+    network: [tcp, udp]
+    credential_refs: [personal]
+    options:
+      method: chacha20-ietf-poly1305
 ```
 
-需要前端热更新时，先启动上述后端，再在另一终端执行 `pnpm --dir web dev`；Vite 将 `/healthz` 和 `/api` 代理到本机 9080 端口。
+凭据可使用 `secret_env`、相对于 YAML 文件的 `secret_file` 或直接 `secret`，三者只选一个。`check` 不绑定端口，不输出凭据；文件模式不启动 HTTP，也不读写 SQLite 的受管配置。
 
 ```sh
-make check       # 前端构建与 lint、go vet、race 测试
+make check       # 依赖约束、go vet、race 测试；无需前端产物
 ./bin/lunaris version
 ```
 
-构建入口使用 Hertz 的 `stdjson` 标签，避免管理 API 的 JSON 加速库受 Go 内部实现变化影响。`web/dist` 和 `bin` 是生成产物，不提交；`go.sum`、pnpm lockfile 和生成的 API 类型纳入版本控制。
+要运行现有的管理骨架，需要额外安装 Node.js 24 与 pnpm 12.16.1：
+
+```sh
+make install-web
+make build-web
+./bin/lunaris-web serve --config config.example.yaml
+make check-web
+```
+
+管理骨架只允许本机 `127.0.0.1:9080`；`config.example.yaml` 是管理启动设置，`examples/shadowsocks.yaml` 是节点配置，两者用途不同。前端热更新使用 `pnpm --dir web dev`。发行 Web 构建使用 `webui` 标签内嵌静态文件，缺少前端产物时会构建失败；默认核心构建不编入前端和 Hertz。
+
+构建入口保留 `stdjson` 标签以兼容管理骨架。`web/dist` 和 `bin` 是生成产物，不提交；`go.sum`、pnpm lockfile 和生成的 API 类型纳入版本控制。
 
 ## HTTP API
 
@@ -95,7 +126,7 @@ make check       # 前端构建与 lint、go vet、race 测试
 
 当前实际接口见 [OpenAPI](api/openapi.yaml)；完整管理功能的规划见 [API 契约](docs/management-api.md)。配置文件使用 YAML，HTTP 请求和响应使用 JSON。
 
-目标目录中的 `node`、`relay`、`egress` 等模块会随实际协议接入创建，不用空实现冒充运行能力。systemd 样例位于 [packaging/systemd](packaging/systemd/lunaris.service)，尚未自动安装到系统。
+systemd 样例位于 [packaging/systemd](packaging/systemd/lunaris.service)，使用节点文件模式，尚未自动安装到系统。HTTP 管理功能不作为当前核心开发的前置依赖。
 
 ## 许可证
 
