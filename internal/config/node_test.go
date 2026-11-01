@@ -61,6 +61,8 @@ func TestNodeFileRejectsInvalidConfigWithoutLeakingSecrets(t *testing.T) {
 	t.Setenv("LUNARIS_TEST_SECRET", "never-print-this-secret")
 	registry, _ := builtin.NewRegistry()
 	cases := map[string]string{
+		"missing listeners":    "schema_version: 1\n",
+		"null listeners":       "listeners: null\n",
 		"unknown field":        validNode + "unexpected: never-print-this-secret\n",
 		"bad protocol options": strings.Replace(validNode, "method: aes-128-gcm", "method: aes-128-gcm\n      unknown: never-print-this-secret", 1),
 		"unknown protocol":     strings.Replace(validNode, "protocol: shadowsocks", "protocol: unsupported", 1),
@@ -101,5 +103,16 @@ func TestSecretFilePathIsRelativeToNodeFile(t *testing.T) {
 	}
 	if string(snapshot.Credentials["personal"]) != "password-with-newline" {
 		t.Fatal("secret file not loaded correctly")
+	}
+}
+
+func TestNodeFileAllowsExplicitEmptyListeners(t *testing.T) {
+	registry, _ := builtin.NewRegistry()
+	snapshot, err := LoadNode(nodeFile(t, "schema_version: 1\nlisteners: []\n"), registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Config.Listeners) != 0 {
+		t.Fatal("explicit empty node created listeners")
 	}
 }

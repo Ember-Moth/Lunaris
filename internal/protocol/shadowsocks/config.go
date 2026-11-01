@@ -22,7 +22,7 @@ type Options struct {
 type Factory struct{}
 
 func (Factory) Capabilities() protocol.Capabilities {
-	return protocol.Capabilities{Type: "shadowsocks", TCP: true, UDP: true}
+	return protocol.Capabilities{Type: "shadowsocks", TCP: true, UDP: true, TCPRelay: true, UDPRelay: true}
 }
 
 func parseOptions(spec model.ListenerSpec) (Options, error) {
@@ -44,6 +44,9 @@ func parseOptions(spec model.ListenerSpec) (Options, error) {
 
 func (Factory) Validate(spec model.ListenerSpec) []model.FieldError {
 	var result []model.FieldError
+	if spec.Transport != (model.Transport{}) {
+		result = append(result, model.FieldError{Path: "transport", Code: "unsupported", Message: "Shadowsocks uses native TCP/UDP only"})
+	}
 	if _, err := parseOptions(spec); err != nil {
 		result = append(result, model.FieldError{Path: "options", Code: "invalid_options", Message: err.Error()})
 	}

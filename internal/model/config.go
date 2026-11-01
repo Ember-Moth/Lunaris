@@ -21,6 +21,19 @@ type ListenerSpec struct {
 	Options        json.RawMessage `json:"options"`
 	CredentialRefs []string        `json:"credential_refs"`
 	CertificateRef string          `json:"certificate_ref,omitempty"`
+	Transport      Transport       `json:"transport,omitempty"`
+}
+
+// Transport describes the carrier; Network describes the listening sockets.
+type Transport struct {
+	Type string `json:"type,omitempty" yaml:"type"`
+	Path string `json:"path,omitempty" yaml:"path"`
+	Host string `json:"host,omitempty" yaml:"host"`
+}
+
+type Certificate struct {
+	Certificate []byte `json:"-" yaml:"-"`
+	PrivateKey  []byte `json:"-" yaml:"-"`
 }
 
 type NodeConfig struct {
@@ -31,8 +44,9 @@ type NodeConfig struct {
 
 // RuntimeConfig includes resolved assets and must not be serialized to an API.
 type RuntimeConfig struct {
-	Config      NodeConfig
-	Credentials map[string][]byte `json:"-" yaml:"-"`
+	Config       NodeConfig
+	Credentials  map[string][]byte      `json:"-" yaml:"-"`
+	Certificates map[string]Certificate `json:"-" yaml:"-"`
 }
 
 // Limits bounds resources owned by each listener. All durations are normalized.

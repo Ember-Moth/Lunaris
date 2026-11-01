@@ -46,7 +46,7 @@ func TestInitializeLockAndReopen(t *testing.T) {
 	if err := reopened.db.QueryRowContext(ctx, "SELECT count(*) FROM schema_migrations").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 {
+	if count != 3 {
 		t.Fatalf("migration applied more than once: %d", count)
 	}
 }

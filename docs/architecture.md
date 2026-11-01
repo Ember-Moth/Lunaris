@@ -8,6 +8,8 @@
 
 当前实施顺序以 [开发计划](development-plan.md) 为准：先完成可独立运行的节点核心，HTTP API 与 Web 后置。直接引用上游模块，不维护本地 vendor 或本地模块替换。
 
+P2 文件模式已提供差异重载、凭据轮换、失败补偿和脱敏状态，见 [运行重载](runtime-reload.md)。P3 已通过本机应用服务和 CLI 提供 SQLite 版本提交与重启恢复，见 [持久化配置服务](persistent-configuration.md)；Web 交互、管理员身份和 TLS 证书资产仍在后续阶段实现。
+
 ## 1. 产品边界与技术选择
 
 Lunaris 面向个人自用、自托管：在自己的服务器安装一个程序，通过浏览器配置并运行代理协议。必须直接依赖 `github.com/sagernet/sing` 作为协议与网络基础设施；协议可以复用 `sing-xxx`，也可以在项目内独立实现。两条路径都以 sing 基建为基础，不 fork sing-box，不将 `github.com/sagernet/sing-box/...` 引入生产依赖。
@@ -193,7 +195,7 @@ API 返回的配置只含不透明资产引用；凭据更换先创建新资产�
 
 协议来源不影响 Web 配置、能力描述、实例启停和状态上报。独立实现还需增加协议规范映射、解析器畸形输入/fuzz 测试，以及独立客户端互通测试；不通过测试用客户端复用同一解析器来证明全部兼容性。
 
-核对到的上游边界：`sing-shadowsocks2` 的 [README](https://github.com/SagerNet/sing-shadowsocks2/blob/dev/README.md) 仍将服务端列为未完成。VLESS 的协议服务不自动包含全部 REALITY 与 WebSocket/gRPC 组合；sing-box 的 [VLESS 接入层](https://github.com/SagerNet/sing-box/blob/testing/protocol/vless/inbound.go) 还负责 TLS 和传输。其 [Trojan 接入层](https://github.com/SagerNet/sing-box/blob/testing/protocol/trojan/inbound.go) 使用 sing-box 自身的 transport，Trojan 需要单独确定独立实现来源。
+核对到的上游边界：`sing-shadowsocks2` 的 [README](https://github.com/SagerNet/sing-shadowsocks2/blob/dev/README.md) 仍将服务端列为未完成。VLESS 的协议服务不自动包含全部 REALITY 与 WebSocket/gRPC 组合；sing-box 的 [VLESS 接入层](https://github.com/SagerNet/sing-box/blob/testing/protocol/vless/inbound.go) 还负责 TLS 和传输。其 [Trojan 接入层](https://github.com/SagerNet/sing-box/blob/testing/protocol/trojan/inbound.go) 使用 sing-box 自身的 transport，Trojan 已在 Lunaris 中基于 sing 独立实现，当前组合见[协议与传输说明](protocols.md)。
 
 ### 适配器契约
 
@@ -291,7 +293,7 @@ UDP：保留数据报边界与每包目标地址，建立有界映射，处理�
 
 服务账户运行，低端口按需授予绑定能力。前台模式便于诊断；systemd 管理重启与日志。CLI 规划包括 `serve`、`doctor`、`backup`、`restore`、`admin reset-password`，恢复或直接写数据库的命令要求服务停止并取得数据目录锁。
 
-首版完整备份与还原走离线 CLI；包含 SQLite 中的配置、协议资产及管理员状态，还需一并保管 bootstrap 和外部管理 TLS 文件。不能只复制一个正在使用 WAL 的数据库主文件。在线备份后续若引入，使用 SQLite 支持的备份接口。[SQLite 备份文档](https://sqlite.org/backup.html)。Web 的脱敏导出是配置模板，不宣称能完整恢复秘密材料。
+完整备份与还原走离线 CLI；当前包含 SQLite 中的配置、凭据资产、幂等操作及迁移状态，管理员与证书数据在相应阶段接入后纳入。bootstrap、外部文件和服务单元需另行保管。P3 使用 SQLite `VACUUM INTO` 生成含 WAL 内容的一致快照，不直接复制数据库主文件。[SQLite 备份文档](https://sqlite.org/backup.html)。Web 的脱敏导出仍是后续模板功能，不宣称能完整恢复秘密材料。
 
 数据库迁移在代理启动前执行，先做一致备份并校验 schema；不兼容时明确失败，禁止自动创建空库掩盖损坏。配置有效但某个代理端口恢复失败时，保留已认证管理入口和其他成功实例。数据库打不开或认证数据不可用时，不打开免认证修复接口，使用本机 CLI 恢复。
 
@@ -314,4 +316,4 @@ Go、Hertz、前端依赖和 sing 系列依赖统一锁版本；sing 必须直�
 
 核心阶段通过 CLI、应用服务和网络集成测试验证业务，HTTP 与 Web 后置。当前实际功能见 [README](../README.md)；架构中的认证、配置应用和其他代理协议不可因目录或接口已存在而视为交付。
 
-实施前只需继续收敛实际首批协议、TLS/REALITY/传输组合和前端视觉方向；React + shadcn/ui、Hertz、GPL-3.0、sing 必选基础、单进程、本机 SQLite、内嵌前端与配置应用模型已有明确设计。
+首批协议、TCP/TLS、WebSocket、HTTPUpgrade 与 QUIC 组合已实现；后续继续收敛扩展传输和前端视觉方向。React + shadcn/ui、Hertz、GPL-3.0、sing 必选基础、单进程、本机 SQLite、内嵌前端与配置应用模型已有明确设计。

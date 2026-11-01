@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Supply a valid UUID, password and certificate files before running check/run.
+schema_version: 1
+credentials:
+  - id: uuid
+    secret_env: LUNARIS_UUID
+  - id: password
+    secret_env: LUNARIS_PASSWORD
+certificates:
+  - id: server
+    certificate_file: /etc/lunaris/fullchain.pem
+    private_key_file: /etc/lunaris/privkey.pem
+listeners:
+  - id: vless-ws
+    protocol: vless
+    address: 127.0.0.1
+    port: 8443
+    network: [tcp]
+    credential_refs: [uuid]
+    certificate_ref: server
+    transport: {type: ws, path: /vless}
+  - id: vmess-upgrade
+    protocol: vmess
+    address: 127.0.0.1
+    port: 8444
+    network: [tcp]
+    credential_refs: [uuid]
+    certificate_ref: server
+    transport: {type: httpupgrade, path: /vmess}
+  - id: trojan-tls
+    protocol: trojan
+    address: 127.0.0.1
+    port: 8445
+    network: [tcp]
+    credential_refs: [password]
+    certificate_ref: server
+    transport: {type: tcp}
+  - id: anytls
+    protocol: anytls
+    address: 127.0.0.1
+    port: 8446
+    network: [tcp]
+    credential_refs: [password]
+    certificate_ref: server
+  - id: hysteria2
+    protocol: hysteria2
+    address: 127.0.0.1
+    port: 8447
+    network: [udp]
+    credential_refs: [password]
+    certificate_ref: server
+  - id: tuic
+    protocol: tuic
+    address: 127.0.0.1
+    port: 8448
+    network: [udp]
+    credential_refs: [password]
+    certificate_ref: server
+    options:
+      congestion_control: cubic
+      users:
+        - uuid: c8820ed3-e4ee-47ad-a5bd-ece70763e32c
+          credential_ref: password

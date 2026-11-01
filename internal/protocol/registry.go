@@ -19,9 +19,12 @@ type RelayHandler interface {
 }
 
 type Capabilities struct {
-	Type model.ProtocolType `json:"type"`
-	TCP  bool               `json:"tcp"`
-	UDP  bool               `json:"udp"`
+	Type       model.ProtocolType `json:"type"`
+	TCP        bool               `json:"tcp"`
+	UDP        bool               `json:"udp"`
+	TCPRelay   bool               `json:"tcp_relay"`
+	UDPRelay   bool               `json:"udp_relay"`
+	Transports []string           `json:"transports,omitempty"`
 }
 
 // ResolvedListenerSpec is private to the runtime and must never be JSON encoded.
@@ -54,6 +57,11 @@ type Factory interface {
 	Capabilities() Capabilities
 	Validate(model.ListenerSpec) []model.FieldError
 	Build(ResolvedListenerSpec, Dependencies) (Instance, error)
+}
+
+// AssetValidator checks resolved secrets before a draft can be saved or applied.
+type AssetValidator interface {
+	ValidateAssets(ResolvedListenerSpec) error
 }
 
 // Registry is constructed once during dependency assembly and is read-only after.

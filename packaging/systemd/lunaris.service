@@ -11,6 +11,7 @@ StateDirectoryMode=0700
 WorkingDirectory=/var/lib/lunaris
 EnvironmentFile=-/etc/lunaris/secrets.env
 ExecStart=/usr/local/bin/lunaris run --config /etc/lunaris/node.yaml
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=10

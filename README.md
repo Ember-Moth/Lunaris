@@ -34,7 +34,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 | [`sing-quic`](https://github.com/SagerNet/sing-quic) | Hysteria2、TUIC 等 QUIC 协议服务 |
 | [`sing-anytls`](https://github.com/SagerNet/sing-anytls) | AnyTLS 协议服务 |
 
-除当前已接入的 Shadowsocks AEAD 外，其余为候选依赖，不代表已实现的协议支持。直接使用上游 Go module 并锁定版本，不维护本地 vendor、副本模块或本地 replace。
+已接入上述库的 Shadowsocks AEAD、VLESS、VMess、Hysteria2、TUIC 和 AnyTLS，并基于 sing 独立实现 Trojan。直接使用上游 Go module 并锁定版本，不维护本地 vendor、副本模块或本地 replace。
 
 ## 架构与技术栈
 
@@ -51,10 +51,17 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 - [管理 API 契约](docs/management-api.md)：初始化、认证、配置、资产、状态与幂等交互。
 - [Polaris 参考对照](docs/polaris-reference.md)：可采用的协议与生命周期经验，以及本地补丁的复用边界。
 - [开发计划](docs/development-plan.md)：先完成节点核心，再实现 HTTP API 与 Web。
+- [文件模式重载与状态](docs/runtime-reload.md)：SIGHUP、凭据轮换、差异重建与失败恢复。
+- [协议、传输与证书](docs/protocols.md)：支持矩阵、TLS 资产、配置示例和客户端互通。
+- [持久化配置服务](docs/persistent-configuration.md)：不可变资产、草稿/提交版本、幂等应用、重启恢复与备份。
 
 ## 当前状态
 
-已实现第一阶段的文件模式节点核心：严格 YAML 校验、环境变量/文件凭据、共享 TCP/UDP 转发、直接出口、监听器启动失败清理、关闭与资源限制，以及 Shadowsocks AEAD。
+已实现节点核心、运行管理、持久化配置服务，以及首批协议与传输扩展。支持文件模式或 SQLite 管理模式，统一严格 YAML 校验、共享转发、直接出口、资源限制和凭据/证书轮换。
+
+新增 VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC；支持 TCP/TLS、WebSocket、HTTPUpgrade 和原生 QUIC。具体组合见[支持矩阵](docs/protocols.md)，配置见 [protocols.yaml](examples/protocols.yaml)。
+
+Shadowsocks 支持以下方法：
 
 | 方法 | TCP | UDP |
 | --- | --- | --- |
@@ -62,9 +69,9 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 | `aes-256-gcm` | 已实现 | 已实现 |
 | `chacha20-ietf-poly1305` | 已实现 | 已实现 |
 
-每个监听器使用一份凭据，可配置多个监听器。当前不支持 SS2022、单端口多用户、Mux/UoT、TLS 插件或配置热更新。修改配置后重启文件模式进程。
+Shadowsocks 每个监听器使用一份凭据，可配置多个监听器；其余新增协议支持多份凭据。Shadowsocks 当前不支持 SS2022、多用户复用或 TLS 插件。Linux/macOS 可用 SIGHUP 重载 YAML，只重建受影响的监听器；这些监听器的旧连接会关闭。
 
-管理界面骨架和 SQLite 初始迁移保留。管理员认证、配置版本应用、管理 API 和 Web 操作按开发计划后置；管理骨架尚未连接代理运行时。协议细节与验证范围见 [Shadowsocks 实现说明](docs/shadowsocks.md)。
+配置版本、凭据/证书资产、幂等应用和重启恢复可通过本机 CLI 使用。管理员认证、HTTP 管理 API 和 Web 操作仍后置，管理界面骨架尚未连接配置服务。协议细节与验证范围见 [Shadowsocks 实现说明](docs/shadowsocks.md)。
 
 ## 本地开发
 
@@ -98,6 +105,18 @@ listeners:
 
 凭据可使用 `secret_env`、相对于 YAML 文件的 `secret_file` 或直接 `secret`，三者只选一个。`check` 不绑定端口，不输出凭据；文件模式不启动 HTTP，也不读写 SQLite 的受管配置。
 
+运行后发送 `kill -HUP <pid>` 应用文件变化，`kill -USR1 <pid>` 查看日志中的状态。`secret_file` 可随重载轮换；外部修改环境变量不会更新进程已有环境。重载失败保留或恢复内存中的旧配置，不修改磁盘文件，详见 [重载说明](docs/runtime-reload.md)。
+
+需要跨重启保留最后成功配置时，改用管理模式（与文件模式二选一）：
+
+```sh
+./bin/lunaris managed --data-dir ./state --source examples/shadowsocks.yaml
+# 在另一终端发送 SIGHUP，显式导入并应用 source
+kill -HUP <pid>
+```
+
+管理模式启动只恢复已提交版本，不会自动应用 source 或草稿。离线 `config import/apply/show/operations`、`backup`、`restore` 的完整用法见 [持久化配置服务](docs/persistent-configuration.md)。默认程序现在包含 SQLite 支持，但仍不需要 Node.js、前端资源或 Hertz；文件模式依然不访问数据库。
+
 ```sh
 make check       # 依赖约束、go vet、race 测试；无需前端产物
 ./bin/lunaris version
@@ -126,7 +145,7 @@ make check-web
 
 当前实际接口见 [OpenAPI](api/openapi.yaml)；完整管理功能的规划见 [API 契约](docs/management-api.md)。配置文件使用 YAML，HTTP 请求和响应使用 JSON。
 
-systemd 样例位于 [packaging/systemd](packaging/systemd/lunaris.service)，使用节点文件模式，尚未自动安装到系统。HTTP 管理功能不作为当前核心开发的前置依赖。
+systemd 样例提供[文件模式](packaging/systemd/lunaris.service)和[管理模式](packaging/systemd/lunaris-managed.service)，尚未自动安装到系统。HTTP 管理功能不作为核心开发的前置依赖。
 
 ## 许可证
 

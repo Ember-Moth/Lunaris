@@ -1,6 +1,6 @@
 # 配置应用与恢复
 
-本文是 [总体架构](architecture.md) 的配置状态契约，适用于 sing-xxx 适配和基于 sing 的独立协议实现。尚未实现。
+本文描述 [总体架构](architecture.md) 的目标状态契约。P3 已实现不依赖 HTTP 的版本、资产、幂等应用与重启恢复，当前入口与具体状态见 [持久化配置服务](persistent-configuration.md)。本页中的 HTTP plan token、前端交互和更细的操作阶段仍为 P5/P6 设计。P2 文件模式差异应用见 [运行重载](runtime-reload.md)。
 
 ## 1. 不变量
 

@@ -11,7 +11,7 @@ import (
 
 func Run(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Usage: lunaris run --config node.yaml\n       lunaris check --config node.yaml\n       lunaris keygen\n       lunaris version\n       lunaris serve [--config bootstrap.yaml] (webui build)")
+		fmt.Println("Usage: lunaris run --config node.yaml\n       lunaris check --config node.yaml\n       lunaris managed --data-dir DIR [--source node.yaml]\n       lunaris config <import|show|list|draft-from|apply|operations> [options]\n       lunaris backup --data-dir DIR --output FILE\n       lunaris restore --data-dir EMPTY_DIR --input FILE\n       lunaris keygen\n       lunaris version\n       lunaris serve [--config bootstrap.yaml] (webui build)\nSignals in run/managed mode (Linux/macOS): SIGHUP applies config; SIGUSR1 logs status.")
 		return nil
 	}
 	switch args[0] {
@@ -21,6 +21,14 @@ func Run(ctx context.Context, args []string) error {
 		return runNode(ctx, args[1:], true)
 	case "serve":
 		return serve(ctx, args[1:])
+	case "managed":
+		return runManaged(ctx, args[1:])
+	case "config":
+		return runConfig(ctx, args[1:])
+	case "backup":
+		return runBackup(ctx, args[1:], false)
+	case "restore":
+		return runBackup(ctx, args[1:], true)
 	case "keygen":
 		if len(args) != 1 {
 			return fmt.Errorf("keygen does not accept arguments")

@@ -37,15 +37,14 @@ func runNode(ctx context.Context, args []string, checkOnly bool) error {
 		fmt.Printf("Configuration valid: %d listener(s)\n", len(snapshot.Config.Listeners))
 		return nil
 	}
+	events, stopSignals := subscribeNodeSignals(ctx)
+	defer stopSignals()
 	runtime, err := node.Start(ctx, snapshot, registry, slog.Default())
 	if err != nil {
 		return err
 	}
-	select {
-	case <-ctx.Done():
-	case err = <-runtime.Errors():
-	}
-	cleanup, cancel := context.WithTimeout(context.Background(), snapshot.Config.Limits.ShutdownTimeout)
+	err = watchNode(ctx, *path, registry, runtime, events, slog.Default())
+	cleanup, cancel := context.WithTimeout(context.Background(), runtime.ShutdownTimeout())
 	defer cancel()
 	return errors.Join(err, runtime.Close(cleanup))
 }

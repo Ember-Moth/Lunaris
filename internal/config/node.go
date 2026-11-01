@@ -7,11 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/netip"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
@@ -22,10 +19,17 @@ import (
 type Snapshot = model.RuntimeConfig
 
 type nodeDocument struct {
-	SchemaVersion int                  `yaml:"schema_version"`
-	Limits        model.Limits         `yaml:"limits"`
-	Credentials   []credentialDocument `yaml:"credentials"`
-	Listeners     []listenerDocument   `yaml:"listeners"`
+	SchemaVersion int                   `yaml:"schema_version"`
+	Limits        model.Limits          `yaml:"limits"`
+	Credentials   []credentialDocument  `yaml:"credentials"`
+	Certificates  []certificateDocument `yaml:"certificates"`
+	Listeners     *[]listenerDocument   `yaml:"listeners"`
+}
+
+type certificateDocument struct {
+	ID              string `yaml:"id"`
+	CertificateFile string `yaml:"certificate_file"`
+	PrivateKeyFile  string `yaml:"private_key_file"`
 }
 
 type credentialDocument struct {
@@ -46,6 +50,7 @@ type listenerDocument struct {
 	Options        map[string]any     `yaml:"options"`
 	CredentialRefs []string           `yaml:"credential_refs"`
 	CertificateRef string             `yaml:"certificate_ref"`
+	Transport      model.Transport    `yaml:"transport"`
 }
 
 func LoadNode(path string, registry *protocol.Registry) (*Snapshot, error) {
@@ -82,10 +87,13 @@ func LoadNode(path string, registry *protocol.Registry) (*Snapshot, error) {
 	if doc.SchemaVersion != model.ConfigSchemaVersion {
 		return nil, errors.New("unsupported node schema_version")
 	}
-	if err := validateLimits(doc.Limits); err != nil {
+	if err := protocol.ValidateLimits(doc.Limits); err != nil {
 		return nil, err
 	}
-	snapshot := &Snapshot{Config: model.NodeConfig{SchemaVersion: doc.SchemaVersion, Limits: doc.Limits, Listeners: make([]model.ListenerSpec, 0, len(doc.Listeners))}, Credentials: make(map[string][]byte)}
+	if doc.Listeners == nil {
+		return nil, errors.New("listeners must be explicitly specified; use [] for an empty node")
+	}
+	snapshot := &Snapshot{Config: model.NodeConfig{SchemaVersion: doc.SchemaVersion, Limits: doc.Limits, Listeners: make([]model.ListenerSpec, 0, len(*doc.Listeners))}, Credentials: make(map[string][]byte)}
 	for _, credential := range doc.Credentials {
 		if credential.ID == "" {
 			return nil, errors.New("credential id is required")
@@ -99,73 +107,54 @@ func LoadNode(path string, registry *protocol.Registry) (*Snapshot, error) {
 		}
 		snapshot.Credentials[credential.ID] = secret
 	}
-	ids := make(map[string]bool)
-	for _, listener := range doc.Listeners {
-		if listener.ID == "" || ids[listener.ID] {
-			return nil, errors.New("listener ids must be non-empty and unique")
-		}
-		ids[listener.ID] = true
-		if listener.Address == "" {
-			listener.Address = "127.0.0.1"
-		}
-		if _, err := netip.ParseAddr(listener.Address); err != nil {
-			return nil, fmt.Errorf("listener %q: address must be a literal IP", listener.ID)
-		}
-		if listener.Port == 0 {
-			return nil, fmt.Errorf("listener %q: port must be between 1 and 65535", listener.ID)
-		}
-		if len(listener.Network) == 0 {
-			listener.Network = []string{"tcp", "udp"}
-		}
-		networks := make(map[string]bool)
-		for _, network := range listener.Network {
-			if (network != "tcp" && network != "udp") || networks[network] {
-				return nil, fmt.Errorf("listener %q: network must contain unique tcp/udp entries", listener.ID)
-			}
-			networks[network] = true
-		}
-		factory, ok := registry.Lookup(listener.Protocol)
-		if !ok {
-			return nil, fmt.Errorf("listener %q: unsupported protocol %q", listener.ID, listener.Protocol)
-		}
-		for _, ref := range listener.CredentialRefs {
-			if _, exists := snapshot.Credentials[ref]; !exists {
-				return nil, fmt.Errorf("listener %q: unknown credential reference", listener.ID)
-			}
-		}
+	for _, listener := range *doc.Listeners {
 		options, err := json.Marshal(listener.Options)
 		if err != nil {
 			return nil, fmt.Errorf("listener %q: options must contain JSON-compatible YAML values", listener.ID)
 		}
 		spec := model.ListenerSpec{ID: listener.ID, Name: listener.Name, Enabled: listener.Enabled == nil || *listener.Enabled, Protocol: listener.Protocol,
 			Address: listener.Address, Port: listener.Port, Network: listener.Network, Options: options,
-			CredentialRefs: listener.CredentialRefs, CertificateRef: listener.CertificateRef}
-		if fields := factory.Validate(spec); len(fields) != 0 {
-			return nil, fmt.Errorf("listener %q: %s: %s", spec.ID, fields[0].Path, fields[0].Message)
-		}
+			CredentialRefs: listener.CredentialRefs, CertificateRef: listener.CertificateRef, Transport: listener.Transport}
 		snapshot.Config.Listeners = append(snapshot.Config.Listeners, spec)
 	}
-	if err := checkEndpoints(snapshot.Config.Listeners); err != nil {
-		return nil, err
+	snapshot.Certificates = make(map[string]model.Certificate)
+	for _, asset := range doc.Certificates {
+		if asset.ID == "" {
+			return nil, errors.New("certificate id is required")
+		}
+		if _, exists := snapshot.Certificates[asset.ID]; exists {
+			return nil, errors.New("duplicate certificate id")
+		}
+		cert, err := readAssetFile(filepath.Dir(path), asset.CertificateFile)
+		if err != nil {
+			return nil, errors.New("cannot read certificate_file")
+		}
+		key, err := readAssetFile(filepath.Dir(path), asset.PrivateKeyFile)
+		if err != nil {
+			return nil, errors.New("cannot read private_key_file")
+		}
+		snapshot.Certificates[asset.ID] = model.Certificate{Certificate: cert, PrivateKey: key}
 	}
-	return snapshot, nil
+	return registry.Normalize(snapshot)
 }
 
-func validateLimits(l model.Limits) error {
-	for name, duration := range map[string]time.Duration{"dial_timeout": l.DialTimeout, "handshake_timeout": l.HandshakeTimeout, "udp_idle_timeout": l.UDPIdleTimeout, "shutdown_timeout": l.ShutdownTimeout} {
-		if duration <= 0 || duration > 24*time.Hour {
-			return fmt.Errorf("%s must be positive and no greater than 24h", name)
-		}
+func readAssetFile(base, path string) ([]byte, error) {
+	if path == "" {
+		return nil, errors.New("asset path required")
 	}
-	for name, count := range map[string]int{"max_connections": l.MaxConnections, "max_pending_handshakes": l.MaxPendingHandshakes, "max_udp_sessions": l.MaxUDPSessions, "max_udp_destinations": l.MaxUDPDestinations} {
-		if count <= 0 || count > 65536 {
-			return fmt.Errorf("%s must be between 1 and 65536", name)
-		}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(base, path)
 	}
-	if l.UDPQueueSize <= 0 || l.UDPQueueSize > 1024 {
-		return errors.New("udp_queue_size must be between 1 and 1024")
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, 1<<20+1))
+	if err != nil || len(b) == 0 || len(b) > 1<<20 {
+		return nil, errors.New("asset must contain 1 byte to 1 MiB")
+	}
+	return b, nil
 }
 
 func resolveSecret(c credentialDocument, base string) ([]byte, error) {
@@ -205,27 +194,4 @@ func resolveSecret(c credentialDocument, base string) ([]byte, error) {
 		return nil, errors.New("secret must contain 1 to 4096 bytes")
 	}
 	return secret, nil
-}
-
-func checkEndpoints(listeners []model.ListenerSpec) error {
-	for i, a := range listeners {
-		if !a.Enabled {
-			continue
-		}
-		for _, b := range listeners[:i] {
-			if !b.Enabled || a.Port != b.Port {
-				continue
-			}
-			for _, network := range a.Network {
-				if !strings.Contains(" "+strings.Join(b.Network, " ")+" ", " "+network+" ") {
-					continue
-				}
-				ipA, ipB := netip.MustParseAddr(a.Address).Unmap(), netip.MustParseAddr(b.Address).Unmap()
-				if ipA == ipB || ipA.IsUnspecified() || ipB.IsUnspecified() {
-					return fmt.Errorf("listeners %q and %q have overlapping %s endpoints", a.ID, b.ID, network)
-				}
-			}
-		}
-	}
-	return nil
 }

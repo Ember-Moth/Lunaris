@@ -1,0 +1,25 @@
+[Unit]
+Description=Lunaris node with persistent configuration
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=true
+StateDirectory=lunaris
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/lunaris
+EnvironmentFile=-/etc/lunaris/secrets.env
+ExecStart=/usr/local/bin/lunaris managed --data-dir /var/lib/lunaris --source /etc/lunaris/node.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
