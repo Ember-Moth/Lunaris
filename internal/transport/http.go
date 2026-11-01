@@ -34,25 +34,50 @@ func (HTTPFactory) Validate(s model.ListenerSpec) []model.FieldError {
 	return validatePlain(s)
 }
 func (HTTPFactory) Build(r ResolvedSpec, b Binding) (Instance, error) {
+	return newHTTPInstance(r, b, httpOptions{})
+}
+
+type httpOptions struct {
+	allowPlain, keepAlive bool
+	version               string
+	maxHeaderBytes        int
+}
+
+func newHTTPInstance(r ResolvedSpec, b Binding, options httpOptions) (Instance, error) {
 	if b.HTTP == nil {
 		return nil, errors.New("HTTP protocol handler required")
 	}
+	if options.maxHeaderBytes == 0 {
+		options.maxHeaderBytes = 8192
+	}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if (options.version == "h1" && request.ProtoMajor != 1) || (options.version == "h2" && request.ProtoMajor != 2) {
+			w.WriteHeader(http.StatusHTTPVersionNotSupported)
+			return
+		}
+		b.HTTP.ServeHTTP(w, request)
+	})
 	binding := Binding{Stream: &StreamHandler{Serve: func(ctx context.Context, c net.Conn, _ M.Socksaddr, _ N.CloseHandlerFunc) error {
 		tracked := c.(*trackedConn)
-		secure, ok := tracked.Conn.(*tls.Conn)
-		if !ok {
+		secure, isTLS := tracked.Conn.(*tls.Conn)
+		if isTLS {
+			if err := secure.HandshakeContext(ctx); err != nil {
+				return err
+			}
+		} else if !options.allowPlain {
 			return errors.New("HTTP proxy transport requires TLS")
 		}
-		if err := secure.HandshakeContext(ctx); err != nil {
-			return err
-		}
-		server := &http.Server{Handler: b.HTTP, ReadHeaderTimeout: r.Limits.HandshakeTimeout, IdleTimeout: r.Limits.UDPIdleTimeout, MaxHeaderBytes: 8192, BaseContext: func(net.Listener) context.Context { return ctx }}
-		if secure.ConnectionState().NegotiatedProtocol == http2.NextProtoTLS {
+		protocols := new(http.Protocols)
+		protocols.SetHTTP1(options.version != "h2")
+		protocols.SetHTTP2(options.version != "h1")
+		protocols.SetUnencryptedHTTP2(options.allowPlain && options.version != "h1")
+		server := &http.Server{Handler: handler, ReadHeaderTimeout: r.Limits.HandshakeTimeout, IdleTimeout: r.Limits.UDPIdleTimeout, MaxHeaderBytes: options.maxHeaderBytes, BaseContext: func(net.Listener) context.Context { return ctx }, Protocols: protocols}
+		if isTLS && secure.ConnectionState().NegotiatedProtocol == http2.NextProtoTLS {
 			h2 := &http2.Server{MaxConcurrentStreams: uint32(r.Limits.MaxConnections + r.Limits.MaxUDPSessions), IdleTimeout: r.Limits.UDPIdleTimeout, MaxReadFrameSize: 1 << 20, MaxUploadBufferPerConnection: 4 << 20, MaxUploadBufferPerStream: 1 << 20}
-			h2.ServeConn(&httpTLSConn{Conn: c, state: secure.ConnectionState()}, &http2.ServeConnOpts{Context: ctx, BaseConfig: server, Handler: b.HTTP})
+			h2.ServeConn(&httpTLSConn{Conn: c, state: secure.ConnectionState()}, &http2.ServeConnOpts{Context: ctx, BaseConfig: server, Handler: handler})
 			return nil
 		}
-		server.SetKeepAlivesEnabled(false)
+		server.SetKeepAlivesEnabled(options.keepAlive)
 		_ = server.Serve(&singleHTTPListener{Conn: c, done: tracked.done})
 		return nil
 	}}}
@@ -60,10 +85,18 @@ func (HTTPFactory) Build(r ResolvedSpec, b Binding) (Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	if s.TLS == nil {
+	if s.TLS == nil && !options.allowPlain {
 		return nil, errors.New("HTTP proxy transport requires TLS")
 	}
-	s.TLS.NextProtos = []string{http2.NextProtoTLS, "http/1.1"}
+	if s.TLS != nil {
+		s.TLS.NextProtos = []string{http2.NextProtoTLS, "http/1.1"}
+		if options.version == "h1" {
+			s.TLS.NextProtos = []string{"http/1.1"}
+		}
+		if options.version == "h2" {
+			s.TLS.NextProtos = []string{http2.NextProtoTLS}
+		}
+	}
 	return s, nil
 }
 
@@ -93,20 +126,38 @@ func (l *singleHTTPListener) Addr() net.Addr { return l.Conn.LocalAddr() }
 // HTTP/3 uses the existing QUIC transport's socket ownership and connection
 // limits. It shares the same protocol HTTP handler as HTTP/1.1 and HTTP/2.
 func http3Binding(handler http.Handler, timeout time.Duration) *QUICHandler {
+	return configuredHTTP3Binding(handler, timeout, http3Options{})
+}
+
+type http3Options struct {
+	maxHeaderBytes int
+	config         *Q.Config
+	onConnection   func(*Q.Conn)
+}
+
+func configuredHTTP3Binding(handler http.Handler, timeout time.Duration, settings http3Options) *QUICHandler {
+	if settings.maxHeaderBytes == 0 {
+		settings.maxHeaderBytes = 8192
+	}
 	return &QUICHandler{ALPN: []string{"h3"}, NewService: func(ctx context.Context, cfg aTLS.ServerConfig, options qtls.QUICOptions) (QUICService, error) {
 		tlsConfig, ok := cfg.(qtls.ServerConfig)
 		if !ok {
 			return nil, errors.New("QUIC TLS adapter required")
 		}
-		return &http3Service{ctx: ctx, tls: tlsConfig, options: options, server: &http3.Server{Handler: handler, ConnContext: func(ctx context.Context, c *Q.Conn) context.Context {
+		return &http3Service{settings: settings, ctx: ctx, tls: tlsConfig, options: options, server: &http3.Server{Handler: handler, ConnContext: func(ctx context.Context, c *Q.Conn) context.Context {
+			if settings.onConnection != nil {
+				settings.onConnection(c)
+			}
+			ctx = context.WithValue(ctx, http.LocalAddrContextKey, c.LocalAddr())
 			timer := time.AfterFunc(timeout, func() { _ = c.CloseWithError(0, "authentication timeout") })
 			context.AfterFunc(c.Context(), func() { timer.Stop() })
 			return context.WithValue(ctx, protocolReadyKey{}, func() { timer.Stop() })
-		}, MaxHeaderBytes: 8192, IdleTimeout: options.IdleTimeout}, done: make(chan struct{})}, nil
+		}, MaxHeaderBytes: settings.maxHeaderBytes, IdleTimeout: options.IdleTimeout}, done: make(chan struct{})}, nil
 	}}
 }
 
 type http3Service struct {
+	settings http3Options
 	ctx      context.Context
 	tls      qtls.ServerConfig
 	options  qtls.QUICOptions
@@ -119,6 +170,16 @@ type http3Service struct {
 func (s *http3Service) Start(c net.PacketConn) error {
 	cfg := &Q.Config{Allow0RTT: false}
 	qtls.ApplyQUICOptions(cfg, s.options)
+	if custom := s.settings.config; custom != nil {
+		cfg.KeepAlivePeriod = custom.KeepAlivePeriod
+		cfg.InitialStreamReceiveWindow = custom.InitialStreamReceiveWindow
+		cfg.MaxStreamReceiveWindow = custom.MaxStreamReceiveWindow
+		cfg.InitialConnectionReceiveWindow = custom.InitialConnectionReceiveWindow
+		cfg.MaxConnectionReceiveWindow = custom.MaxConnectionReceiveWindow
+		if custom.MaxIncomingStreams > 0 {
+			cfg.MaxIncomingStreams = min(cfg.MaxIncomingStreams, custom.MaxIncomingStreams)
+		}
+	}
 	var err error
 	s.listener, err = s.tls.Listen(c, cfg)
 	if err != nil {

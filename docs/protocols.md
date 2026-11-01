@@ -11,9 +11,9 @@
 | Shadowsocks classic AEAD | TCP / UDP | 不设置 | 无 | TCP、UDP | 每监听器一个密码 |
 | Shadowsocks 2022 | TCP / UDP | 不设置 | 无 | TCP、UDP | 单用户密钥；AES 支持多用户 |
 | Naive | TCP 或 UDP | `http` 或 `quic` | 必须 | TCP、UDP（UoT） | 用户名与密码映射 |
-| VLESS | TCP | `tcp`、`ws`、`httpupgrade`、`reality` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID |
-| VMess AEAD | TCP | `tcp`、`ws`、`httpupgrade`、`reality` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID；客户端 `alter_id: 0` |
-| Trojan | TCP | `tcp`、`ws`、`httpupgrade`、`reality` | 必须 | TCP、UDP associate | 一个或多个密码 |
+| VLESS | TCP；XHTTP h3 用 UDP | `tcp`、`ws`、`httpupgrade`、`reality`、`xhttp` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID |
+| VMess AEAD | TCP；XHTTP h3 用 UDP | `tcp`、`ws`、`httpupgrade`、`reality`、`xhttp` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID；客户端 `alter_id: 0` |
+| Trojan | TCP；XHTTP h3 用 UDP | `tcp`、`ws`、`httpupgrade`、`reality`、`xhttp` | 必须 | TCP、UDP associate | 一个或多个密码 |
 | AnyTLS | TCP | `tcp`、`reality` | 必须 | TCP、UDP（内建 UoT v2） | 一个或多个密码 |
 | Hysteria2 | UDP | `quic` | 必须，TLS 1.3 | TCP、UDP datagram | 一个或多个密码 |
 | TUIC v5 | UDP | `quic` | 必须，TLS 1.3 | TCP、UDP datagram / UDP stream | UUID 与密码映射 |
@@ -106,6 +106,6 @@ python3 scripts/test-interop.py --client /path/to/sing-box --server bin/lunaris
 
 验证记录：2026-11-01，macOS arm64 上使用官方 sing-box 1.14.4（发行 SHA-256 已核对）完成 18 个组合。正式发行客户端是独立进程，但与服务端共享部分 SagerNet 协议库来源；此结果不代表所有其他客户端实现都已验证。独立工厂注册表重构后，同一发行客户端再次通过 19 个组合，新增 Shadowsocks 原生 TCP/UDP 覆盖。
 
-已增加 [UoT、sing-mux 和 REALITY](connection-extensions.md)，包括可选的旧客户端兼容。新增 [Naive 与 Shadowsocks 2022](naive-ss2022.md)，包含 AES 同端口多用户。仍不宣称支持 Vision、gRPC、XHTTP、WebSocket early-data 或协议内的 PacketAddr/XUDP 扩展。部分库能解析额外指令，不作为已验证产品能力。
+已增加 [UoT、sing-mux 和 REALITY](connection-extensions.md)，包括可选的旧客户端兼容。新增 [Naive 与 Shadowsocks 2022](naive-ss2022.md)，包含 AES 同端口多用户。已移植 [XHTTP](xhttp.md)。仍不宣称支持 Vision、gRPC、WebSocket early-data 或协议内的 PacketAddr/XUDP 扩展。部分库能解析额外指令，不作为已验证产品能力。
 
 本地互通和交叉编译不等同于真实 Linux、公网丢包/MTU、长期运行和压力验证；这些环境验收仍待完成。

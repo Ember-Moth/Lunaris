@@ -31,6 +31,9 @@ func field(path, msg string) []model.FieldError {
 	return []model.FieldError{{Path: path, Code: "invalid", Message: msg}}
 }
 func validatePlain(s model.ListenerSpec) []model.FieldError {
+	if s.Transport.XHTTP != nil {
+		return field("transport.xhttp", "XHTTP settings require the xhttp transport")
+	}
 	if s.Transport.Reality != nil {
 		return field("transport.reality", "REALITY settings require the reality transport")
 	}
@@ -47,6 +50,9 @@ func (NativeFactory) Validate(s model.ListenerSpec) []model.FieldError {
 	return validatePlain(s)
 }
 func validateHTTP(s model.ListenerSpec) []model.FieldError {
+	if s.Transport.XHTTP != nil {
+		return field("transport.xhttp", "XHTTP settings require the xhttp transport")
+	}
 	if s.Transport.Reality != nil {
 		return field("transport.reality", "REALITY settings require the reality transport")
 	}

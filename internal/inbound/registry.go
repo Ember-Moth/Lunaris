@@ -61,12 +61,13 @@ func (r *Registry) factories(s model.ListenerSpec) (protocol.Factory, transport.
 	if !ok {
 		return nil, nil, fmt.Errorf("unregistered transport %q", kind)
 	}
-	tc := t.Capabilities()
-	if !(c.TCP && tc.TCP || c.UDP && tc.UDP) {
+	tc := transport.CapabilitiesFor(t, s)
+	udp := c.UDP || (c.TCP && tc.UDPStreams)
+	if !(c.TCP && tc.TCP || udp && tc.UDP) {
 		return nil, nil, errors.New("protocol and transport have no common listening network")
 	}
 	for _, network := range s.Network {
-		if (network == "tcp" && (!c.TCP || !tc.TCP)) || (network == "udp" && (!c.UDP || !tc.UDP)) || (network != "tcp" && network != "udp") {
+		if (network == "tcp" && (!c.TCP || !tc.TCP)) || (network == "udp" && (!udp || !tc.UDP)) || (network != "tcp" && network != "udp") {
 			return nil, nil, errors.New("network is incompatible with protocol and transport")
 		}
 	}
@@ -126,12 +127,12 @@ func (r *Registry) Build(s protocol.ResolvedListenerSpec, d protocol.Dependencie
 	}
 	networks := slices.Clone(s.Spec.Network)
 	if len(networks) == 0 {
-		c := t.Capabilities()
+		c := transport.CapabilitiesFor(t, s.Spec)
 		pc := p.Capabilities()
 		if c.TCP && pc.TCP {
 			networks = append(networks, "tcp")
 		}
-		if c.UDP && pc.UDP {
+		if c.UDP && (pc.UDP || pc.TCP && c.UDPStreams) {
 			networks = append(networks, "udp")
 		}
 	}

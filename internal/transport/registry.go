@@ -90,6 +90,18 @@ type Factory interface {
 	Build(ResolvedSpec, Binding) (Instance, error)
 }
 
+// ConfiguredFactory narrows transport capabilities for the selected wire mode.
+type ConfiguredFactory interface {
+	CapabilitiesFor(model.ListenerSpec) Capabilities
+}
+
+func CapabilitiesFor(factory Factory, s model.ListenerSpec) Capabilities {
+	if configured, ok := factory.(ConfiguredFactory); ok {
+		return configured.CapabilitiesFor(s)
+	}
+	return factory.Capabilities()
+}
+
 // Registry is immutable after construction. Each transport supplies its own
 // validator and constructor; adding one does not change a central type switch.
 type Registry struct{ factories map[string]Factory }

@@ -114,3 +114,11 @@ UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadows
 - [ ] Naive HTTP/3 独立发行客户端验收（本机客户端连接原版服务端也失败）。
 
 实现、配置与验证记录见 [Naive 与 SS2022](naive-ss2022.md)。
+
+## Polaris XHTTP 移植
+
+- [x] 三种上传模式与 auto，HTTP/1.1–3，VLESS/VMess/Trojan TCP/UDP。
+- [x] 乱序队列、缓冲与会话限额、配置/生命周期接入及 MPL 来源声明。
+- [x] 原始移植测试、节点回归、独立 Xray 47 个组合。
+
+实现与验证边界见 [XHTTP](xhttp.md)。

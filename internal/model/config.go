@@ -2,6 +2,7 @@
 package model
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 )
@@ -37,6 +38,13 @@ type Transport struct {
 	Path    string   `json:"path,omitempty" yaml:"path"`
 	Host    string   `json:"host,omitempty" yaml:"host"`
 	Reality *Reality `json:"reality,omitempty" yaml:"reality"`
+	XHTTP   *XHTTP   `json:"xhttp,omitempty" yaml:"-"`
+}
+
+type XHTTP struct {
+	Mode        string          `json:"mode,omitempty"`
+	HTTPVersion string          `json:"http_version,omitempty"`
+	Extra       json.RawMessage `json:"extra,omitempty"`
 }
 
 type Reality struct {
@@ -49,6 +57,11 @@ type Reality struct {
 }
 
 func (t Transport) Clone() Transport {
+	if t.XHTTP != nil {
+		x := *t.XHTTP
+		x.Extra = bytes.Clone(x.Extra)
+		t.XHTTP = &x
+	}
 	if t.Reality != nil {
 		r := *t.Reality
 		r.ServerNames = append([]string(nil), r.ServerNames...)

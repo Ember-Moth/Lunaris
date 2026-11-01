@@ -86,12 +86,13 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 		if err != nil {
 			return nil, fmt.Errorf("listener %q: %w", spec.ID, err)
 		}
-		transportCaps := carrier.Capabilities()
+		transportCaps := transport.CapabilitiesFor(carrier, spec)
+		udp := caps.UDP || (caps.TCP && transportCaps.UDPStreams)
 		if len(spec.Network) == 0 {
 			if caps.TCP && transportCaps.TCP {
 				spec.Network = append(spec.Network, "tcp")
 			}
-			if caps.UDP && transportCaps.UDP {
+			if udp && transportCaps.UDP {
 				spec.Network = append(spec.Network, "udp")
 			}
 		}
@@ -100,7 +101,7 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 		}
 		slices.Sort(spec.Network)
 		for i, network := range spec.Network {
-			if (network != "tcp" && network != "udp") || (network == "tcp" && !caps.TCP) || (network == "udp" && !caps.UDP) || (i > 0 && spec.Network[i-1] == network) {
+			if (network != "tcp" && network != "udp") || (network == "tcp" && !caps.TCP) || (network == "udp" && !udp) || (i > 0 && spec.Network[i-1] == network) {
 				return nil, fmt.Errorf("listener %q: invalid or unsupported network", spec.ID)
 			}
 		}

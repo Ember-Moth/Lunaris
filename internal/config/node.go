@@ -50,9 +50,36 @@ type listenerDocument struct {
 	Options        map[string]any     `yaml:"options"`
 	CredentialRefs []string           `yaml:"credential_refs"`
 	CertificateRef string             `yaml:"certificate_ref"`
-	Transport      model.Transport    `yaml:"transport"`
+	Transport      transportDocument  `yaml:"transport"`
 	UDPOverTCP     bool               `yaml:"udp_over_tcp"`
 	Multiplex      model.Multiplex    `yaml:"multiplex"`
+}
+
+type transportDocument struct {
+	Type    string         `yaml:"type"`
+	Path    string         `yaml:"path"`
+	Host    string         `yaml:"host"`
+	Reality *model.Reality `yaml:"reality"`
+	XHTTP   *struct {
+		Mode        string         `yaml:"mode"`
+		HTTPVersion string         `yaml:"http_version"`
+		Extra       map[string]any `yaml:"extra"`
+	} `yaml:"xhttp"`
+}
+
+func (d transportDocument) build() (model.Transport, error) {
+	result := model.Transport{Type: d.Type, Path: d.Path, Host: d.Host, Reality: d.Reality}
+	if d.XHTTP != nil {
+		extra, err := json.Marshal(d.XHTTP.Extra)
+		if err != nil {
+			return result, errors.New("XHTTP extra must contain JSON-compatible values")
+		}
+		if d.XHTTP.Extra == nil {
+			extra = nil
+		}
+		result.XHTTP = &model.XHTTP{Mode: d.XHTTP.Mode, HTTPVersion: d.XHTTP.HTTPVersion, Extra: extra}
+	}
+	return result, nil
 }
 
 func LoadNode(path string, registry *inbound.Registry) (*Snapshot, error) {
@@ -114,9 +141,13 @@ func LoadNode(path string, registry *inbound.Registry) (*Snapshot, error) {
 		if err != nil {
 			return nil, fmt.Errorf("listener %q: options must contain JSON-compatible YAML values", listener.ID)
 		}
+		carrier, err := listener.Transport.build()
+		if err != nil {
+			return nil, fmt.Errorf("listener %q: %w", listener.ID, err)
+		}
 		spec := model.ListenerSpec{ID: listener.ID, Name: listener.Name, Enabled: listener.Enabled == nil || *listener.Enabled, Protocol: listener.Protocol,
 			Address: listener.Address, Port: listener.Port, Network: listener.Network, Options: options,
-			CredentialRefs: listener.CredentialRefs, CertificateRef: listener.CertificateRef, Transport: listener.Transport, UDPOverTCP: listener.UDPOverTCP, Multiplex: listener.Multiplex}
+			CredentialRefs: listener.CredentialRefs, CertificateRef: listener.CertificateRef, Transport: carrier, UDPOverTCP: listener.UDPOverTCP, Multiplex: listener.Multiplex}
 		snapshot.Config.Listeners = append(snapshot.Config.Listeners, spec)
 	}
 	snapshot.Certificates = make(map[string]model.Certificate)

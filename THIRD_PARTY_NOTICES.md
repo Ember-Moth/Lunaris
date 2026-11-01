@@ -1,6 +1,6 @@
 # Third-party notices
 
-Lunaris source is licensed under GPL-3.0-only. Dependencies retain their own licenses.
+Lunaris original source is licensed under GPL-3.0-only. Dependencies and imported third-party source retain their own licenses.
 
 ## shadcn/ui components
 
@@ -27,3 +27,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+## Polaris XHTTP / Xray SplitHTTP
+
+`internal/transport/xhttp` was ported from [HyperPteLtd/Polaris](https://github.com/HyperPteLtd/Polaris/tree/56d52fb44958ef3cc2a7fb841cd240f8206234b2/internal/transport/xhttp), commit `56d52fb44958ef3cc2a7fb841cd240f8206234b2`.
+
+Copyright (C) 2026 Polaris contributors
+
+Original Polaris files are GPL-3.0-or-later unless their file-level notices state otherwise. The applicable GPL version 3 text is retained in [LICENSE](LICENSE).
+
+The files marked as derived from XTLS/Xray-core retain MPL-2.0 and the original source reference `b17a88f9b46d` (`transport/internet/splithttp`, `infra/conf/transport_method.go`, and related configuration helpers). The complete license is in [LICENSES/MPL-2.0/MPL-2.0.txt](LICENSES/MPL-2.0/MPL-2.0.txt). These file-level licenses are not replaced by Lunaris's main license.
+
+Lunaris changes adapt the host listener and context integration, use released SagerNet module APIs and Go crypto randomness, bound and validate node-facing configuration, and harden request cancellation, write interruption, cleanup joins, range parsing, and power-of-two random alphabets. Client utilities remain available internally for regression testing; the node runtime registers only the server transport. New Lunaris wrapper and test files carry their own SPDX headers.

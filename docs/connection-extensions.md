@@ -130,7 +130,7 @@ listeners:
 
 将 target 和 server_names 替换为实际 TLS 1.3 目标站点。`short_ids` 是最多 16 个十六进制字符、长度为偶数的字符串，空字符串表示允许空 short ID。时间差未设置时按 1 分钟处理；最大可设为 24 小时。`certificate_ref` 与 REALITY 配置互斥。
 
-本轮没有接入 Vision、VLESS 新加密、ML-DSA 附加签名、XHTTP 或 gRPC。VLESS 客户端使用空 flow 和 `encryption: none`。
+已移植的 XHTTP 见[独立说明](xhttp.md)。尚未接入 Vision、VLESS 新加密、ML-DSA 附加签名或 gRPC。VLESS 客户端使用空 flow 和 `encryption: none`。
 
 ## 生命周期与持久化
 

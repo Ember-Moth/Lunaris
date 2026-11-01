@@ -116,3 +116,47 @@ func TestNodeFileAllowsExplicitEmptyListeners(t *testing.T) {
 		t.Fatal("explicit empty node created listeners")
 	}
 }
+
+func TestXHTTPYAMLAndSnapshotIsolation(t *testing.T) {
+	registry, _ := builtin.NewRegistry()
+	document := `schema_version: 1
+credentials:
+  - id: user
+    secret: c8820ed3-e4ee-47ad-a5bd-ece70763e32c
+listeners:
+  - id: xhttp
+    protocol: vless
+    port: 8080
+    credential_refs: [user]
+    transport:
+      type: xhttp
+      path: /proxy
+      xhttp:
+        mode: packet-up
+        http_version: h1
+        extra:
+          xPaddingBytes: "100-200"
+          scMaxBufferedBytes: 2097152
+`
+	snapshot, err := LoadNode(nodeFile(t, document), registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := snapshot.Config.Listeners[0]
+	if len(spec.Network) != 1 || spec.Network[0] != "tcp" || spec.Transport.XHTTP == nil {
+		t.Fatal("XHTTP config was lost")
+	}
+	normalized, err := registry.Normalize(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Config.Listeners[0].Transport.XHTTP.Extra[0] = '!'
+	if normalized.Config.Listeners[0].Transport.XHTTP.Extra[0] != '{' {
+		t.Fatal("XHTTP extra aliases source snapshot")
+	}
+	for _, content := range []string{strings.Replace(document, "http_version: h1", "unknown: yes", 1), strings.Replace(document, "xPaddingBytes:", "unknownPadding:", 1), strings.Replace(document, "type: xhttp", "type: tcp", 1), strings.Replace(document, "http_version: h1", "http_version: h3", 1)} {
+		if _, err := LoadNode(nodeFile(t, content), registry); err == nil {
+			t.Fatal("invalid XHTTP configuration accepted")
+		}
+	}
+}

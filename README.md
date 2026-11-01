@@ -61,7 +61,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 
 已实现节点核心、运行管理、持久化配置服务，以及首批协议与传输扩展。支持文件模式或 SQLite 管理模式，统一严格 YAML 校验、共享转发、直接出口、资源限制和凭据/证书轮换。
 
-新增 VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC；支持 TCP/TLS、WebSocket、HTTPUpgrade、原生 QUIC 和 REALITY；已接入 UoT 与 smux/yamux/h2mux。具体组合见[支持矩阵](docs/protocols.md)，配置见 [protocols.yaml](examples/protocols.yaml)。
+新增 VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC；支持 TCP/TLS、WebSocket、HTTPUpgrade、原生 QUIC、REALITY 和 XHTTP；已接入 UoT 与 smux/yamux/h2mux。具体组合见[支持矩阵](docs/protocols.md)，配置见 [protocols.yaml](examples/protocols.yaml)。
 
 Shadowsocks 支持以下方法：
 
@@ -71,7 +71,7 @@ Shadowsocks 支持以下方法：
 | `aes-256-gcm` | 已实现 | 已实现 |
 | `chacha20-ietf-poly1305` | 已实现 | 已实现 |
 
-Shadowsocks 每个监听器使用一份凭据，可配置多个监听器；其余新增协议支持多份凭据。Shadowsocks 当前不支持 SS2022、多用户复用或 TLS 插件。Linux/macOS 可用 SIGHUP 重载 YAML，只重建受影响的监听器；这些监听器的旧连接会关闭。
+Shadowsocks classic AEAD 每个监听器使用一份凭据；SS2022 的两种 AES 方法支持同端口多用户。SS2022 三种方法和 Naive 的配置见 [协议说明](docs/naive-ss2022.md)。Shadowsocks 尚不支持 TLS 插件。Linux/macOS 可用 SIGHUP 重载 YAML，只重建受影响的监听器；这些监听器的旧连接会关闭。
 
 配置版本、凭据/证书资产、幂等应用和重启恢复可通过本机 CLI 使用。管理员认证、HTTP 管理 API 和 Web 操作仍后置，管理界面骨架尚未连接配置服务。协议细节与验证范围见 [Shadowsocks 实现说明](docs/shadowsocks.md)。
 
@@ -154,3 +154,5 @@ systemd 样例提供[文件模式](packaging/systemd/lunaris.service)和[管理�
 项目采用 GNU General Public License v3.0，SPDX 标识为 `GPL-3.0-only`。完整条款见 [LICENSE](LICENSE)。第三方依赖与组件保留各自的版权和许可证声明。
 
 Naive（HTTP/1.1、HTTP/2、HTTP/3）与 Shadowsocks 2022 单/多用户的配置和验证边界见 [协议说明](docs/naive-ss2022.md)。
+
+已从 Polaris 移植 [XHTTP 传输](docs/xhttp.md)，覆盖三种上传模式与 HTTP/1.1–3；配置见 [xhttp.yaml](examples/xhttp.yaml)。
