@@ -79,7 +79,7 @@ P3 时尚未执行真实 Linux 运行、外部客户端软件或公网网络验�
 - [x] PEM 导入、不可变证书版本、内容轮换、恢复与备份。
 - [x] 真实回环 TCP/UDP、分片握手、错误凭据、超时和会话回收测试。
 
-范围与使用方法见[协议、传输与证书](protocols.md)。REALITY/Vision、gRPC/XHTTP 和其他扩展不在本轮。Linux 部署与公网/压力验收继续保留为 P4 运维后续工作。
+范围与使用方法见[协议、传输与证书](protocols.md)。该阶段尚未包含 REALITY/Vision、gRPC/XHTTP；后续扩展见下文。Linux 部署与公网/压力验收继续保留为 P4 运维后续工作。
 
 P4 本轮验证：`make check`、管理构建的 vet/race、`make check-web`、`go mod verify` 和 Linux amd64/arm64 的 CGO=0 交叉编译通过。官方 sing-box 1.14.4 发行客户端在 macOS arm64 上完成全部 18 个协议/传输/TLS 组合（AnyTLS 为 TCP，其余为 TCP+UDP）；可通过 `scripts/test-interop.py` 复跑。最终关闭流程调整后，受影响回归与全部客户端组合再次通过。
 
@@ -93,3 +93,24 @@ P4 本轮验证：`make check`、管理构建的 vet/race、`make check-web`、`
 详细接口与扩展方式见[工厂注册表](factory-registries.md)。
 
 注册表重构验证：核心 `make check`、管理构建的 vet/race、Linux amd64/arm64 的 CGO=0 交叉编译通过；sing-box 1.14.4 发行客户端验证 19 个组合（新增 Shadowsocks 原生 TCP/UDP）。协议/传输扩展测试和证书材料隔离测试均通过。
+
+## UoT、mux 与 REALITY
+
+- [x] UoT v1/v2、固定/每包目标、AnyTLS UDP。
+- [x] sing-mux 的 smux、yamux、h2mux，含 padding、子流限制和回收。
+- [x] 直接依赖最新版 xtls/reality；按 ClientHello 分流到可选的旧握手兼容后端。
+- [x] REALITY 私钥资产、轮换、目标探测取消、普通 TLS 回落与客户端认证验证。
+- [x] Go 1.27 工具链与 CI 同步，核心/管理构建检查和 Linux 双架构编译。
+
+sing-box 1.14.4 的 20 个新增组合及 Xray 26.10.31 的 3 个 REALITY 组合互通通过。详细配置、客户端兼容开关和证据范围见[连接扩展](connection-extensions.md)。本轮新功能尚未包含 Vision、XUDP、gRPC 或 XHTTP。
+
+UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadowsocks 可同时接收原生 UDP、UoT 和 mux 客户端。sing-box 出站开启 UoT 时不创建 mux client，这个客户端优先级不作为服务端的互斥限制。
+
+## Naive 与 Shadowsocks 2022
+
+- [x] Naive HTTP/1.1、HTTP/2、HTTP/3，用户名/凭据映射和 UoT。
+- [x] SS2022 三种方法、AES 同端口多用户、原生 UDP/UoT/mux。
+- [x] 服务端身份密钥资产、配置校验、重载撤销、UDP 重放与生命周期回归。
+- [ ] Naive HTTP/3 独立发行客户端验收（本机客户端连接原版服务端也失败）。
+
+实现、配置与验证记录见 [Naive 与 SS2022](naive-ss2022.md)。

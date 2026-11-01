@@ -109,10 +109,11 @@ func (r *Runtime) build(target *model.RuntimeConfig, spec model.ListenerSpec) (*
 	ctx, cancel := context.WithCancel(r.ctx)
 	flow := relay.New(ctx, &egress.Direct{}, target.Config.Limits)
 	credentials := make(map[string][]byte, len(spec.CredentialRefs))
-	for _, ref := range spec.CredentialRefs {
+	for _, ref := range r.registry.CredentialRefs(spec) {
 		credentials[ref] = bytes.Clone(target.Credentials[ref])
 	}
 	factorySpec := spec
+	factorySpec.Transport = spec.Transport.Clone()
 	factorySpec.Options = bytes.Clone(spec.Options)
 	factorySpec.Network = slices.Clone(spec.Network)
 	factorySpec.CredentialRefs = slices.Clone(spec.CredentialRefs)

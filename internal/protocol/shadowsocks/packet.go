@@ -42,6 +42,7 @@ func (s *Server) releasePacketBytes(n int) {
 // Close releases all queued buffers before it returns. A full queue drops input.
 type packetSession struct {
 	server   *Server
+	writer   N.PacketWriter
 	source   netip.AddrPort
 	mu       sync.Mutex
 	closed   bool
@@ -97,6 +98,9 @@ func (c *packetSession) WritePacket(buffer *buf.Buffer, destination M.Socksaddr)
 		return net.ErrClosed
 	default:
 	}
+	if c.writer != nil {
+		return c.writer.WritePacket(buffer, destination)
+	}
 	encoder := c.server.method.DialPacketConn(&datagramConn{write: func(packet []byte) (int, error) {
 		c.server.writeMu.Lock()
 		defer c.server.writeMu.Unlock()
@@ -141,9 +145,19 @@ func (c *packetSession) LocalAddr() net.Addr               { return net.UDPAddrF
 func (c *packetSession) SetDeadline(t time.Time) error     { return c.SetReadDeadline(t) }
 func (c *packetSession) SetReadDeadline(t time.Time) error { c.deadline.Set(t); return nil }
 func (*packetSession) SetWriteDeadline(time.Time) error    { return nil }
-func (*packetSession) FrontHeadroom() int                  { return 512 }
-func (*packetSession) RearHeadroom() int                   { return 16 }
-func (*packetSession) ReaderMTU() int                      { return 65535 }
+func (c *packetSession) FrontHeadroom() int {
+	if c.writer != nil {
+		return N.CalculateFrontHeadroom(c.writer)
+	}
+	return 512
+}
+func (c *packetSession) RearHeadroom() int {
+	if c.writer != nil {
+		return N.CalculateRearHeadroom(c.writer)
+	}
+	return 16
+}
+func (*packetSession) ReaderMTU() int { return 65535 }
 
 // datagramConn adapts exactly one encrypted datagram to the upstream codec.
 // It never owns or closes the shared listener socket.

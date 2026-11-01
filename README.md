@@ -52,6 +52,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 - [Polaris 参考对照](docs/polaris-reference.md)：可采用的协议与生命周期经验，以及本地补丁的复用边界。
 - [开发计划](docs/development-plan.md)：先完成节点核心，再实现 HTTP API 与 Web。
 - [文件模式重载与状态](docs/runtime-reload.md)：SIGHUP、凭据轮换、差异重建与失败恢复。
+- [UoT、mux 与 REALITY](docs/connection-extensions.md)：多路复用、旧客户端兼容、密钥配置与生命周期。
 - [协议与传输工厂注册表](docs/factory-registries.md)：独立注册、组合校验、资源归属与扩展方式。
 - [协议、传输与证书](docs/protocols.md)：支持矩阵、TLS 资产、配置示例和客户端互通。
 - [持久化配置服务](docs/persistent-configuration.md)：不可变资产、草稿/提交版本、幂等应用、重启恢复与备份。
@@ -60,7 +61,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 
 已实现节点核心、运行管理、持久化配置服务，以及首批协议与传输扩展。支持文件模式或 SQLite 管理模式，统一严格 YAML 校验、共享转发、直接出口、资源限制和凭据/证书轮换。
 
-新增 VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC；支持 TCP/TLS、WebSocket、HTTPUpgrade 和原生 QUIC。具体组合见[支持矩阵](docs/protocols.md)，配置见 [protocols.yaml](examples/protocols.yaml)。
+新增 VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC；支持 TCP/TLS、WebSocket、HTTPUpgrade、原生 QUIC 和 REALITY；已接入 UoT 与 smux/yamux/h2mux。具体组合见[支持矩阵](docs/protocols.md)，配置见 [protocols.yaml](examples/protocols.yaml)。
 
 Shadowsocks 支持以下方法：
 
@@ -76,7 +77,7 @@ Shadowsocks 每个监听器使用一份凭据，可配置多个监听器；其�
 
 ## 本地开发
 
-节点核心只需要 Go 1.26 或更新版本，不需要 Node.js 或前端构建。
+节点核心只需要 Go 1.27 或更新版本，不需要 Node.js 或前端构建。
 
 ```sh
 make install
@@ -151,3 +152,5 @@ systemd 样例提供[文件模式](packaging/systemd/lunaris.service)和[管理�
 ## 许可证
 
 项目采用 GNU General Public License v3.0，SPDX 标识为 `GPL-3.0-only`。完整条款见 [LICENSE](LICENSE)。第三方依赖与组件保留各自的版权和许可证声明。
+
+Naive（HTTP/1.1、HTTP/2、HTTP/3）与 Shadowsocks 2022 单/多用户的配置和验证边界见 [协议说明](docs/naive-ss2022.md)。

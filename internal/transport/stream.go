@@ -28,6 +28,9 @@ type socketServer struct {
 	Spec            ResolvedSpec
 	Limits          model.Limits
 	TLS             *tls.Config
+	prepare         func(context.Context) error
+	cleanup         func()
+	handshake       func(context.Context, net.Conn) (net.Conn, error)
 	upgrade         func(*socketServer, http.ResponseWriter, *http.Request)
 	packet          *PacketHandler
 	udp             net.PacketConn
@@ -107,6 +110,11 @@ func (s *socketServer) Start(parent context.Context) error {
 	}
 	s.started = true
 	s.ctx, s.cancel = context.WithCancel(parent)
+	if s.prepare != nil {
+		if err := s.prepare(s.ctx); err != nil {
+			return err
+		}
+	}
 	if s.OnStart != nil {
 		if err := s.OnStart(); err != nil {
 			return err
@@ -183,6 +191,13 @@ func (s *socketServer) serve(ctx context.Context, c net.Conn) {
 	// deadline so an upgraded client cannot hold a handshake slot forever.
 	_ = carrier.SetDeadline(carrier.deadline)
 	defer func() { carrier.Close(); c.Close() }()
+	if s.handshake != nil {
+		wrapped, err := s.handshake(ctx, c)
+		if err != nil {
+			return
+		}
+		c = wrapped
+	}
 	err := s.Serve(ctx, c, M.SocksaddrFromNet(carrier.RemoteAddr()).Unwrap(), func(error) { carrier.Close() })
 	if err == nil {
 		select {
@@ -250,6 +265,9 @@ func (s *socketServer) close() {
 			s.wg.Wait()
 			if s.OnClose != nil {
 				s.closeErr = errors.Join(s.closeErr, s.OnClose())
+			}
+			if s.cleanup != nil {
+				s.cleanup()
 			}
 			s.events <- InstanceEvent{State: "stopped"}
 			close(s.done)
@@ -338,7 +356,12 @@ func (l *streamListener) Accept() (net.Conn, error) {
 // Bridge releases the carrier handshake budget only after protocol authentication.
 type Bridge struct{ Handler RelayHandler }
 
+type protocolReadyKey struct{}
+
 func authenticated(ctx context.Context) {
+	if ready, ok := ctx.Value(protocolReadyKey{}).(func()); ok {
+		ready()
+	}
 	if c, ok := ctx.Value(carrierKey{}).(*trackedConn); ok {
 		c.authenticated()
 	}

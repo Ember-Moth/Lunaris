@@ -13,6 +13,7 @@ import (
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
+	"github.com/Ember-Moth/Lunaris/internal/transport"
 )
 
 // Normalize validates the common runtime contract and copies every mutable
@@ -66,6 +67,10 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 			return nil, fmt.Errorf("listener %q: port must be between 1 and 65535", spec.ID)
 		}
 		caps := factory.Capabilities()
+		if caps.UDPOverTCPRequired {
+			spec.UDPOverTCP = true
+		}
+		spec.Transport = spec.Transport.Clone()
 		if spec.Transport.Type == "" && len(caps.Transports) > 0 {
 			if caps.Transports[0] != "native" {
 				spec.Transport.Type = caps.Transports[0]
@@ -103,7 +108,7 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 			return nil, fmt.Errorf("listener %q: %w", spec.ID, err)
 		}
 		spec.CredentialRefs = slices.Clone(spec.CredentialRefs)
-		for _, ref := range spec.CredentialRefs {
+		for _, ref := range r.CredentialRefs(spec) {
 			if _, exists := result.Credentials[ref]; !exists {
 				return nil, fmt.Errorf("listener %q: unknown credential reference", spec.ID)
 			}
@@ -126,7 +131,12 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 			return nil, fmt.Errorf("listener %q: %s: %s", spec.ID, fields[0].Path, fields[0].Message)
 		}
 		if validator, ok := factory.(protocol.AssetValidator); ok {
-			if err := validator.ValidateAssets(protocol.ResolvedListenerSpec{Spec: spec, Limits: result.Config.Limits, Credentials: result.Credentials}); err != nil {
+			if err := validator.ValidateAssets(protocol.ResolvedListenerSpec{Spec: spec, Limits: result.Config.Limits, Credentials: credentialSubset(result.Credentials, protocolCredentialRefs(factory, spec))}); err != nil {
+				return nil, fmt.Errorf("listener %q: %w", spec.ID, err)
+			}
+		}
+		if validator, ok := carrier.(transport.AssetFactory); ok {
+			if err := validator.ValidateAssets(transport.ResolvedSpec{Transport: spec.Transport, Limits: result.Config.Limits, Secrets: credentialSubset(result.Credentials, validator.CredentialRefs(spec))}); err != nil {
 				return nil, fmt.Errorf("listener %q: %w", spec.ID, err)
 			}
 		}

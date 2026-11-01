@@ -1,6 +1,6 @@
 # 协议、传输与证书
 
-状态：2026-11-01，已接入七种节点协议。所有协议共用 sing 转发与运行管理；直接依赖上游 Go modules，不使用 sing-box 模块、本地 vendor 或本地 replace。HTTP 管理 API 和 Web 仍后置。
+状态：2026-11-01，已接入八类节点协议，Shadowsocks 同时支持 classic AEAD 与 2022。所有协议共用 sing 转发与运行管理；直接依赖上游 Go modules，不使用 sing-box 模块、本地 vendor 或本地 replace。HTTP 管理 API 和 Web 仍后置。
 
 ## 支持矩阵
 
@@ -9,14 +9,16 @@
 | 协议 | `network` | `transport.type` | TLS | 转发 | 凭据 |
 | --- | --- | --- | --- | --- | --- |
 | Shadowsocks classic AEAD | TCP / UDP | 不设置 | 无 | TCP、UDP | 每监听器一个密码 |
-| VLESS | TCP | `tcp`、`ws`、`httpupgrade` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID |
-| VMess AEAD | TCP | `tcp`、`ws`、`httpupgrade` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID；客户端 `alter_id: 0` |
-| Trojan | TCP | `tcp`、`ws`、`httpupgrade` | 必须 | TCP、UDP associate | 一个或多个密码 |
-| AnyTLS | TCP | `tcp` | 必须 | TCP；会话内多流 | 一个或多个密码 |
+| Shadowsocks 2022 | TCP / UDP | 不设置 | 无 | TCP、UDP | 单用户密钥；AES 支持多用户 |
+| Naive | TCP 或 UDP | `http` 或 `quic` | 必须 | TCP、UDP（UoT） | 用户名与密码映射 |
+| VLESS | TCP | `tcp`、`ws`、`httpupgrade`、`reality` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID |
+| VMess AEAD | TCP | `tcp`、`ws`、`httpupgrade`、`reality` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID；客户端 `alter_id: 0` |
+| Trojan | TCP | `tcp`、`ws`、`httpupgrade`、`reality` | 必须 | TCP、UDP associate | 一个或多个密码 |
+| AnyTLS | TCP | `tcp`、`reality` | 必须 | TCP、UDP（内建 UoT v2） | 一个或多个密码 |
 | Hysteria2 | UDP | `quic` | 必须，TLS 1.3 | TCP、UDP datagram | 一个或多个密码 |
 | TUIC v5 | UDP | `quic` | 必须，TLS 1.3 | TCP、UDP datagram / UDP stream | UUID 与密码映射 |
 
-省略 `network` 时按协议选择监听套接字。流式协议省略传输时默认为 `tcp`；Hysteria2/TUIC 默认为 `quic`。不支持的组合会在 `check`、保存草稿和应用前被拒绝。
+省略 `network` 时按协议选择监听套接字。VLESS/VMess/Trojan/AnyTLS 省略传输时默认为 `tcp`，Naive 默认为 `http`；Hysteria2/TUIC 默认为 `quic`。不支持的组合会在 `check`、保存草稿和应用前被拒绝。
 
 VLESS/VMess 使用 `sing-vmess`，AnyTLS 使用 `sing-anytls`，Hysteria2/TUIC 使用 `sing-quic`。Trojan 在项目内按[原始协议](https://trojan-gfw.github.io/trojan/protocol)实现，地址解析、数据包缓冲和转发仍使用 sing。
 
@@ -46,11 +48,11 @@ listeners:
       host: node.example.com
 ```
 
-- `certificate_ref` 启用 TLS；VLESS/VMess 不设置它时是明文载体。TCP TLS 最低版本为 1.2，QUIC 为 1.3。
+- `certificate_ref` 启用 TLS；VLESS/VMess 使用 tcp/ws/httpupgrade 且不设置它时是明文载体；REALITY 使用独立的私钥配置。TCP TLS 最低版本为 1.2，QUIC 为 1.3。
 - `ws` 和 `httpupgrade` 必须设置绝对 `path`，服务端精确匹配转义后的路径。路径不含 query/fragment；请求中的查询参数不参与路径匹配。
 - 可选 `host` 精确匹配 HTTP Host（大小写不敏感，端口属于 Host 的一部分）。省略它表示不限制 Host。
 - HTTP 传输使用 HTTP/1.1。WebSocket 只接受二进制数据帧，不启用压缩；单消息上限 1 MiB。HTTPUpgrade 升级后直接承载协议字节流。
-- 凭据来源仍为 `secret`、`secret_env`、`secret_file` 三选一。VLESS/VMess 的 secret 是 UUID；其他协议是密码。新增协议可在 `credential_refs` 中列多个用户，不允许重复协议身份。
+- 凭据来源仍为 `secret`、`secret_env`、`secret_file` 三选一。VLESS/VMess 的 secret 是 UUID；SS2022 是 Base64 密钥；其他协议是密码。新增协议可在 `credential_refs` 中列多个用户，不允许重复协议身份。
 - VLESS、VMess、Trojan、AnyTLS 和 Hysteria2 当前没有额外 `options`，省略或写 `{}`。未知选项会报错，不会静默忽略。
 
 TUIC 通过 UUID 区分用户，密码保持为独立凭据资产。`options.users` 必须与 `credential_refs` 一一对应：
@@ -100,10 +102,10 @@ make build
 python3 scripts/test-interop.py --client /path/to/sing-box --server bin/lunaris
 ```
 
-脚本只绑定回环地址，生成临时证书和配置，不下载客户端、不设置系统代理。使用正式发行客户端进程测试 19 个协议/传输/TLS 组合（包含原生 Shadowsocks）；AnyTLS 测试 TCP，其余测试 TCP 和 UDP。VLESS/VMess 客户端设置 `packet_encoding: ""` 使用原生 UDP 帧，避免启用额外封装。
+脚本只绑定回环地址，生成临时证书和配置，不下载客户端、不设置系统代理。使用正式发行客户端进程测试 19 个协议/传输/TLS 组合（包含原生 Shadowsocks）；所有组合均测试 TCP 和 UDP，AnyTLS UDP 使用内建 UoT v2。VLESS/VMess 客户端设置 `packet_encoding: ""` 使用原生 UDP 帧，避免启用额外封装。
 
 验证记录：2026-11-01，macOS arm64 上使用官方 sing-box 1.14.4（发行 SHA-256 已核对）完成 18 个组合。正式发行客户端是独立进程，但与服务端共享部分 SagerNet 协议库来源；此结果不代表所有其他客户端实现都已验证。独立工厂注册表重构后，同一发行客户端再次通过 19 个组合，新增 Shadowsocks 原生 TCP/UDP 覆盖。
 
-本轮不宣称支持 REALITY、Vision、gRPC、XHTTP、SS2022、WebSocket early-data、sing-mux、PacketAddr/XUDP 或 AnyTLS 的 UoT。部分库能解析额外指令，不作为已验证产品能力。
+已增加 [UoT、sing-mux 和 REALITY](connection-extensions.md)，包括可选的旧客户端兼容。新增 [Naive 与 Shadowsocks 2022](naive-ss2022.md)，包含 AES 同端口多用户。仍不宣称支持 Vision、gRPC、XHTTP、WebSocket early-data 或协议内的 PacketAddr/XUDP 扩展。部分库能解析额外指令，不作为已验证产品能力。
 
 本地互通和交叉编译不等同于真实 Linux、公网丢包/MTU、长期运行和压力验证；这些环境验收仍待完成。

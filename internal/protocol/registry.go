@@ -22,7 +22,13 @@ type Capabilities struct {
 	UDPRelay    bool               `json:"udp_relay"`
 	TLS         bool               `json:"tls"`
 	TLSRequired bool               `json:"tls_required"`
-	Transports  []string           `json:"transports,omitempty"`
+	UDPOverTCP  bool               `json:"udp_over_tcp"`
+	// Required means UDP is intrinsically provided by UoT for this protocol.
+	UDPOverTCPRequired bool `json:"udp_over_tcp_required,omitempty"`
+	// Zero allows v1 and v2; a nonzero value fixes the accepted wire version.
+	UDPOverTCPVersion uint8    `json:"udp_over_tcp_version,omitempty"`
+	Multiplex         bool     `json:"multiplex"`
+	Transports        []string `json:"transports,omitempty"`
 }
 
 // ResolvedListenerSpec is private to the runtime and must never be JSON encoded.
@@ -52,6 +58,11 @@ type Factory interface {
 // AssetValidator checks resolved secrets before a draft can be saved or applied.
 type AssetValidator interface {
 	ValidateAssets(ResolvedListenerSpec) error
+}
+
+// CredentialReferencer declares protocol assets in addition to user credentials.
+type CredentialReferencer interface {
+	CredentialRefs(model.ListenerSpec) []string
 }
 
 // Registry is constructed once during dependency assembly and is read-only after.

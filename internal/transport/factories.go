@@ -31,6 +31,9 @@ func field(path, msg string) []model.FieldError {
 	return []model.FieldError{{Path: path, Code: "invalid", Message: msg}}
 }
 func validatePlain(s model.ListenerSpec) []model.FieldError {
+	if s.Transport.Reality != nil {
+		return field("transport.reality", "REALITY settings require the reality transport")
+	}
 	if s.Transport.Path != "" || s.Transport.Host != "" {
 		return field("transport", "this transport does not accept path or host")
 	}
@@ -44,6 +47,9 @@ func (NativeFactory) Validate(s model.ListenerSpec) []model.FieldError {
 	return validatePlain(s)
 }
 func validateHTTP(s model.ListenerSpec) []model.FieldError {
+	if s.Transport.Reality != nil {
+		return field("transport.reality", "REALITY settings require the reality transport")
+	}
 	t := s.Transport
 	u, err := url.ParseRequestURI(t.Path)
 	if err != nil || !strings.HasPrefix(t.Path, "/") || strings.HasPrefix(t.Path, "//") || u.RawQuery != "" || u.Fragment != "" || u.EscapedPath() != t.Path || len(t.Path) > 1024 {

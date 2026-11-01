@@ -51,6 +51,8 @@ type listenerDocument struct {
 	CredentialRefs []string           `yaml:"credential_refs"`
 	CertificateRef string             `yaml:"certificate_ref"`
 	Transport      model.Transport    `yaml:"transport"`
+	UDPOverTCP     bool               `yaml:"udp_over_tcp"`
+	Multiplex      model.Multiplex    `yaml:"multiplex"`
 }
 
 func LoadNode(path string, registry *inbound.Registry) (*Snapshot, error) {
@@ -114,7 +116,7 @@ func LoadNode(path string, registry *inbound.Registry) (*Snapshot, error) {
 		}
 		spec := model.ListenerSpec{ID: listener.ID, Name: listener.Name, Enabled: listener.Enabled == nil || *listener.Enabled, Protocol: listener.Protocol,
 			Address: listener.Address, Port: listener.Port, Network: listener.Network, Options: options,
-			CredentialRefs: listener.CredentialRefs, CertificateRef: listener.CertificateRef, Transport: listener.Transport}
+			CredentialRefs: listener.CredentialRefs, CertificateRef: listener.CertificateRef, Transport: listener.Transport, UDPOverTCP: listener.UDPOverTCP, Multiplex: listener.Multiplex}
 		snapshot.Config.Listeners = append(snapshot.Config.Listeners, spec)
 	}
 	snapshot.Certificates = make(map[string]model.Certificate)

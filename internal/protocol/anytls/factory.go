@@ -17,7 +17,7 @@ import (
 type Factory struct{}
 
 func (Factory) Capabilities() protocol.Capabilities {
-	return protocol.Capabilities{Type: "anytls", TCP: true, TCPRelay: true, TLS: true, TLSRequired: true, Transports: []string{"tcp"}}
+	return protocol.Capabilities{Type: "anytls", UDPOverTCP: true, UDPOverTCPRequired: true, UDPOverTCPVersion: 2, Multiplex: false, TCP: true, TCPRelay: true, UDPRelay: true, TLS: true, TLSRequired: true, Transports: []string{"tcp", "reality"}}
 }
 func (Factory) Validate(s model.ListenerSpec) []model.FieldError { return stream.Validate(s) }
 func (Factory) ValidateAssets(r protocol.ResolvedListenerSpec) error {

@@ -4,5 +4,5 @@ package builtin
 import "github.com/Ember-Moth/Lunaris/internal/transport"
 
 func NewRegistry() (*transport.Registry, error) {
-	return transport.NewRegistry(transport.NativeFactory{}, transport.TCPFactory{}, transport.WebSocketFactory{}, transport.HTTPUpgradeFactory{}, transport.QUICFactory{})
+	return transport.NewRegistry(transport.NativeFactory{}, transport.TCPFactory{}, transport.WebSocketFactory{}, transport.HTTPUpgradeFactory{}, transport.QUICFactory{}, transport.RealityFactory{}, transport.HTTPFactory{})
 }

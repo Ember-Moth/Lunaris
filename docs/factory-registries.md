@@ -17,14 +17,14 @@ flowchart TD
 
 | 注册表 | 注册项 | 职责 |
 | --- | --- | --- |
-| `protocol.Registry` | Shadowsocks、VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC 各自的 `Factory` | 协议能力、选项和凭据校验，创建协议处理器 |
-| `transport.Registry` | `NativeFactory`、`TCPFactory`、`WebSocketFactory`、`HTTPUpgradeFactory`、`QUICFactory` | 传输配置校验，创建并拥有监听 socket、TLS、升级连接和 QUIC transport |
+| `protocol.Registry` | Shadowsocks、VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC、Naive 各自的 `Factory` | 协议能力、选项和凭据校验，创建协议处理器 |
+| `transport.Registry` | `NativeFactory`、`TCPFactory`、`WebSocketFactory`、`HTTPUpgradeFactory`、`QUICFactory`、`RealityFactory`、`HTTPFactory` | 传输配置校验，创建并拥有监听 socket、TLS、升级连接和 QUIC transport |
 
 注册表拒绝 nil 工厂、空类型和重复类型，通过 `Lookup` 查找，通过 `Capabilities` 返回排序后的能力。不会通过包初始化函数隐式注册，也不在请求处理过程中修改注册表。
 
 两个注册表可以独立构造、替换或裁剪。默认入口分别是 `protocol/builtin.NewProtocols()` 和 `transport/builtin.NewRegistry()`；`protocol/builtin.NewRegistry()` 是默认组装入口，返回 `*inbound.Registry`。
 
-TLS 保持为 TCP/HTTP 传输的可选封装，由 `certificate_ref` 启用；它不是另一个互斥的 `transport.type`。QUIC 必须使用 TLS。`native` 表示原生 TCP/UDP 套接字组，Shadowsocks 省略 `transport` 时选择它，原有 YAML 和存储快照不需要迁移。
+TLS 保持为 TCP/HTTP 传输的可选封装，由 `certificate_ref` 启用；它不是另一个互斥的 `transport.type`。QUIC 必须使用 TLS。REALITY 作为独立传输提供安全握手，使用私钥资产而非证书。`native` 表示原生 TCP/UDP 套接字组，Shadowsocks 省略 `transport` 时选择它，原有 YAML 和存储快照不需要迁移。
 
 ## 构建契约
 
@@ -48,12 +48,13 @@ type Factory interface {
 
 协议工厂声明允许的传输及 TLS 要求；传输工厂校验自己的 path、Host 和 TLS 条件。组装层校验类型存在、协议允许该传输、套接字网络存在交集、TLS 策略和资产引用。省略 `network` 时使用双方能力交集。
 
-协议构造器收到凭据和逻辑配置，不收到证书链或私钥；传输构造器收到监听设置、TLS 材料和协议回调，不收到密码或协议选项。协议认证后的连接继续进入同一个 sing relay。
+协议构造器收到凭据和逻辑配置，不收到证书链或私钥；传输构造器收到监听设置、TLS 材料和协议回调，不收到密码或协议选项。协议认证后的连接先进入 UoT/mux 处理链，再进入同一个 sing relay。REALITY 私钥只传给相应传输工厂。协议可通过 `CredentialReferencer` 声明额外协议资产，例如 SS2022 的服务端身份密钥；这些引用也参与校验、快照与重载指纹。
 
-`Binding` 保留三种实际接入边界：
+`Binding` 提供四种实际接入边界：
 
 - `StreamHandler`：接收解封装后的 `net.Conn`，可提供协议 Start/Close 钩子；用于 SS TCP、VLESS、VMess、Trojan 和 AnyTLS。
 - `PacketHandler`：接收传输层创建的 `net.PacketConn`，负责协议数据报与会话；用于 SS UDP。传输层关闭 socket，协议层关闭关联会话和队列。
+- `HTTP`：协议提供 `http.Handler`，HTTP 传输持有 HTTP/1.1、HTTP/2 连接；QUIC 传输可将同一 handler 适配为 HTTP/3。
 - `QUICHandler`：提供上游 QUIC service 构造函数、ALPN 和协议控制流名额。传输实例启动时传入生命周期 context、受跟踪 TLS 配置和受限 QUIC 选项，上游 service 仍通过 `sing-quic` 完成协议握手。
 
 QUIC transport 的创建、连接准入和回收统一位于 `internal/transport/quic.go`，其中不判断 Hysteria2/TUIC 类型。TCP/HTTP 的共用 socket 运行时也不根据传输名字分支：各工厂分别注入原始流、WebSocket 或 HTTPUpgrade 的处理函数。

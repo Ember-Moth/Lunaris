@@ -41,7 +41,7 @@ func (r *Runtime) fingerprint(snapshot *model.RuntimeConfig, spec model.Listener
 	limits := snapshot.Config.Limits
 	limits.ShutdownTimeout = 0
 	credentials := make(map[string][]byte, len(spec.CredentialRefs))
-	for _, ref := range spec.CredentialRefs {
+	for _, ref := range r.registry.CredentialRefs(spec) {
 		credentials[ref] = snapshot.Credentials[ref]
 	}
 	content, _ := json.Marshal(struct {

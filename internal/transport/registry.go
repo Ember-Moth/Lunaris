@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"reflect"
 	"slices"
 
@@ -30,10 +31,12 @@ type Instance interface {
 }
 
 type Capabilities struct {
-	Type string `json:"type"`
-	TCP  bool   `json:"tcp"`
-	UDP  bool   `json:"udp"`
-	TLS  bool   `json:"tls"`
+	Type       string `json:"type"`
+	TCP        bool   `json:"tcp"`
+	UDP        bool   `json:"udp"`
+	TLS        bool   `json:"tls"`
+	Secure     bool   `json:"secure"`
+	UDPStreams bool   `json:"udp_streams,omitempty"`
 }
 
 // ResolvedSpec contains only carrier settings and TLS material, never credentials
@@ -44,13 +47,20 @@ type ResolvedSpec struct {
 	Network     []string
 	Transport   model.Transport
 	Limits      model.Limits
-	Certificate []byte `json:"-" yaml:"-"`
-	PrivateKey  []byte `json:"-" yaml:"-"`
+	Certificate []byte            `json:"-" yaml:"-"`
+	PrivateKey  []byte            `json:"-" yaml:"-"`
+	Secrets     map[string][]byte `json:"-" yaml:"-"`
+}
+
+type AssetFactory interface {
+	CredentialRefs(model.ListenerSpec) []string
+	ValidateAssets(ResolvedSpec) error
 }
 
 // Binding exposes protocol entry points to a transport without selecting a
 // transport implementation. Constructors prepare resources; Start activates them.
 type Binding struct {
+	HTTP   http.Handler
 	Stream *StreamHandler
 	Packet *PacketHandler
 	QUIC   *QUICHandler

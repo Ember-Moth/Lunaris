@@ -37,7 +37,7 @@ type quicServer struct {
 type QUICFactory struct{}
 
 func (QUICFactory) Capabilities() Capabilities {
-	return Capabilities{Type: "quic", UDP: true, TLS: true}
+	return Capabilities{Type: "quic", UDP: true, TLS: true, UDPStreams: true}
 }
 func (QUICFactory) Validate(s model.ListenerSpec) []model.FieldError {
 	if s.CertificateRef == "" {
@@ -48,6 +48,9 @@ func (QUICFactory) Validate(s model.ListenerSpec) []model.FieldError {
 func (QUICFactory) Build(r ResolvedSpec, b Binding) (Instance, error) {
 	if err := model.ValidateLimits(r.Limits); err != nil {
 		return nil, err
+	}
+	if b.HTTP != nil {
+		b.QUIC = http3Binding(b.HTTP, r.Limits.HandshakeTimeout)
 	}
 	if b.QUIC == nil || b.QUIC.NewService == nil {
 		return nil, errors.New("QUIC protocol handler required")

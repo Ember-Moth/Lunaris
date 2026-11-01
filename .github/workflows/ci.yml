@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - uses: actions/setup-go@v7.0.0
         with:
-          go-version: '1.26.10'
+          go-version: '1.27.3'
           cache: true
       - run: make install
       - run: make check

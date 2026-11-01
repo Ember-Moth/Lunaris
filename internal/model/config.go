@@ -22,13 +22,40 @@ type ListenerSpec struct {
 	CredentialRefs []string        `json:"credential_refs"`
 	CertificateRef string          `json:"certificate_ref,omitempty"`
 	Transport      Transport       `json:"transport,omitempty"`
+	UDPOverTCP     bool            `json:"udp_over_tcp,omitempty"`
+	Multiplex      Multiplex       `json:"multiplex,omitempty"`
+}
+
+type Multiplex struct {
+	Enabled bool `json:"enabled,omitempty" yaml:"enabled"`
+	Padding bool `json:"padding,omitempty" yaml:"padding"`
 }
 
 // Transport describes the carrier; Network describes the listening sockets.
 type Transport struct {
-	Type string `json:"type,omitempty" yaml:"type"`
-	Path string `json:"path,omitempty" yaml:"path"`
-	Host string `json:"host,omitempty" yaml:"host"`
+	Type    string   `json:"type,omitempty" yaml:"type"`
+	Path    string   `json:"path,omitempty" yaml:"path"`
+	Host    string   `json:"host,omitempty" yaml:"host"`
+	Reality *Reality `json:"reality,omitempty" yaml:"reality"`
+}
+
+type Reality struct {
+	AllowLegacyClients bool          `json:"allow_legacy_clients,omitempty" yaml:"allow_legacy_clients"`
+	Target             string        `json:"target" yaml:"target"`
+	ServerNames        []string      `json:"server_names" yaml:"server_names"`
+	PrivateKeyRef      string        `json:"private_key_ref" yaml:"private_key_ref"`
+	ShortIDs           []string      `json:"short_ids" yaml:"short_ids"`
+	MaxTimeDifference  time.Duration `json:"max_time_difference,omitempty" yaml:"max_time_difference"`
+}
+
+func (t Transport) Clone() Transport {
+	if t.Reality != nil {
+		r := *t.Reality
+		r.ServerNames = append([]string(nil), r.ServerNames...)
+		r.ShortIDs = append([]string(nil), r.ShortIDs...)
+		t.Reality = &r
+	}
+	return t
 }
 
 type Certificate struct {

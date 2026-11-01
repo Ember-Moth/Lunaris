@@ -45,6 +45,9 @@ type running struct {
 }
 
 func start(t *testing.T, kind, carrier string, secure bool, limits model.Limits) running {
+	return startConfigured(t, kind, carrier, secure, limits, nil)
+}
+func startConfigured(t *testing.T, kind, carrier string, secure bool, limits model.Limits, configure func(*model.ListenerSpec)) running {
 	t.Helper()
 	ctx := testutil.Context(t)
 	cert, tlsConfig := testutil.Certificate(t)
@@ -67,6 +70,9 @@ func start(t *testing.T, kind, carrier string, secure bool, limits model.Limits)
 	}
 	if kind == "tuic" {
 		spec.Options = []byte(`{"users":[{"uuid":"` + userID + `","credential_ref":"one"},{"uuid":"ab20e8ef-131d-448d-a58d-b6d81e25073b","credential_ref":"two"}]}`)
+	}
+	if configure != nil {
+		configure(&spec)
 	}
 	flow := relay.New(ctx, &egress.Direct{}, limits)
 	instance, err := registry.Build(protocol.ResolvedListenerSpec{Spec: spec, Limits: limits, Credentials: map[string][]byte{"one": []byte(secret), "two": []byte(second)}, Certificate: cert.Certificate, PrivateKey: cert.PrivateKey}, protocol.Dependencies{Handler: flow, Logger: logger.NOP()})
@@ -346,7 +352,7 @@ func packetEcho(t *testing.T, c net.PacketConn, dst net.Addr) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(b[:n], p) {
-		t.Fatal("UDP payload changed")
+		t.Fatalf("UDP payload changed: got %d bytes, want %d, prefix=%x", n, len(p), b[:min(n, 32)])
 	}
 }
 func TestQUICProtocols(t *testing.T) {

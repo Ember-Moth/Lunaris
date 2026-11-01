@@ -77,9 +77,9 @@ class EchoUDP(socketserver.BaseRequestHandler):
 
 
 @contextlib.contextmanager
-def process(command, log):
+def process(command, log, *, env=None):
     with log.open("w") as output:
-        child = subprocess.Popen(command, stdout=output, stderr=output)
+        child = subprocess.Popen(command, stdout=output, stderr=output, env=env)
         try:
             yield child
         except BaseException:
@@ -192,19 +192,18 @@ def main():
                     payload = b"TCP through released client" * 3000
                     conn.sendall(payload)
                     assert exact(conn, len(payload)) == payload
-                if kind != "anytls":
-                    control, destination = socks(inbound, 3, 0)
-                    with control, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as datagram:
-                        datagram.settimeout(3)
-                        host, udp_port = destination
-                        if host == "0.0.0.0":
-                            host = "127.0.0.1"
-                        payload = b"UDP through released client" * 100
-                        header = b"\x00\x00\x00\x01" + socket.inet_aton("127.0.0.1") + struct.pack("!H", udp.server_address[1])
-                        datagram.sendto(header + payload, (host, udp_port))
-                        response, _ = datagram.recvfrom(65535)
-                        assert response[:4] == header[:4] and response[10:] == payload
-                print(f"PASS {kind}/{carrier}/tls={secure}: TCP" + (" + UDP" if kind != "anytls" else ""), flush=True)
+                control, destination = socks(inbound, 3, 0)
+                with control, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as datagram:
+                    datagram.settimeout(3)
+                    host, udp_port = destination
+                    if host == "0.0.0.0":
+                        host = "127.0.0.1"
+                    payload = b"UDP through released client" * 100
+                    header = b"\x00\x00\x00\x01" + socket.inet_aton("127.0.0.1") + struct.pack("!H", udp.server_address[1])
+                    datagram.sendto(header + payload, (host, udp_port))
+                    response, _ = datagram.recvfrom(65535)
+                    assert response[:4] == header[:4] and response[10:] == payload, (kind, carrier, secure, len(response), response[:40].hex())
+                print(f"PASS {kind}/{carrier}/tls={secure}: TCP + UDP", flush=True)
         print(f"Passed {len(scenarios)} protocol/transport combinations on loopback.")
 
 

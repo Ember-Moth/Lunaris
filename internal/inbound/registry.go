@@ -4,10 +4,12 @@ package inbound
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"slices"
 
+	"github.com/Ember-Moth/Lunaris/internal/extension"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/transport"
@@ -71,8 +73,21 @@ func (r *Registry) factories(s model.ListenerSpec) (protocol.Factory, transport.
 	if s.CertificateRef != "" && (!c.TLS || !tc.TLS) {
 		return nil, nil, errors.New("TLS is unsupported by this protocol and transport combination")
 	}
-	if c.TLSRequired && s.CertificateRef == "" {
+	if c.TLSRequired && s.CertificateRef == "" && !tc.Secure {
 		return nil, nil, errors.New("protocol requires a TLS certificate")
+	}
+	uotEnabled := s.UDPOverTCP || c.UDPOverTCPRequired
+	if uotEnabled && !c.UDPOverTCP {
+		return nil, nil, errors.New("protocol does not support UDP over TCP")
+	}
+	if s.Multiplex.Enabled && !c.Multiplex {
+		return nil, nil, errors.New("protocol does not support sing-mux")
+	}
+	if (s.Multiplex.Enabled || uotEnabled) && len(s.Network) > 0 && !slices.Contains(s.Network, "tcp") && !tc.UDPStreams {
+		return nil, nil, errors.New("connection extensions require a TCP listening network")
+	}
+	if s.Multiplex.Padding && !s.Multiplex.Enabled {
+		return nil, nil, errors.New("multiplex.padding requires multiplex.enabled")
 	}
 	if fields := t.Validate(s); len(fields) > 0 {
 		return nil, nil, fmt.Errorf("%s: %s", fields[0].Path, fields[0].Message)
@@ -97,6 +112,7 @@ func (r *Registry) Build(s protocol.ResolvedListenerSpec, d protocol.Dependencie
 	// their credential material and the logical TLS policy in ListenerSpec.
 	protocolSpec := s
 	protocolSpec.Certificate, protocolSpec.PrivateKey = nil, nil
+	protocolSpec.Credentials = credentialSubset(s.Credentials, protocolCredentialRefs(p, s.Spec))
 	if v, ok := p.(protocol.AssetValidator); ok {
 		if err := v.ValidateAssets(protocolSpec); err != nil {
 			return nil, err
@@ -126,10 +142,69 @@ func (r *Registry) Build(s protocol.ResolvedListenerSpec, d protocol.Dependencie
 			return nil, errors.New("resolved certificate and private key required")
 		}
 	}
-	d.Handler = transport.Bridge{Handler: d.Handler}
-	binding, err := p.Build(protocolSpec, d)
+	if assets, ok := t.(transport.AssetFactory); ok {
+		resolved.Secrets = credentialSubset(s.Credentials, assets.CredentialRefs(s.Spec))
+		if err := assets.ValidateAssets(resolved); err != nil {
+			return nil, err
+		}
+	}
+	caps := p.Capabilities()
+	extensions, err := extension.New(extension.Options{UDPOverTCP: s.Spec.UDPOverTCP || caps.UDPOverTCPRequired, UDPOverTCPVersion: caps.UDPOverTCPVersion, Multiplex: s.Spec.Multiplex}, s.Limits, d.Handler, d.Logger)
 	if err != nil {
 		return nil, err
 	}
-	return t.Build(resolved, binding)
+	d.Handler = transport.Bridge{Handler: extensions}
+	binding, err := p.Build(protocolSpec, d)
+	if err != nil {
+		_ = extensions.Close(context.Background())
+		return nil, err
+	}
+	instance, err := t.Build(resolved, binding)
+	if err != nil {
+		_ = extensions.Close(context.Background())
+		return nil, err
+	}
+	return &extension.Instance{Instance: instance, Handler: extensions}, nil
+}
+
+func (r *Registry) CredentialRefs(s model.ListenerSpec) []string {
+	refs := slices.Clone(s.CredentialRefs)
+	p, ok := r.protocols.Lookup(s.Protocol)
+	if !ok {
+		return refs
+	}
+	refs = protocolCredentialRefs(p, s)
+	kind := s.Transport.Type
+	if kind == "" {
+		kind = p.Capabilities().Transports[0]
+	}
+	if f, ok := r.transports.Lookup(kind); ok {
+		if a, ok := f.(transport.AssetFactory); ok {
+			for _, ref := range a.CredentialRefs(s) {
+				if !slices.Contains(refs, ref) {
+					refs = append(refs, ref)
+				}
+			}
+		}
+	}
+	return refs
+}
+func credentialSubset(input map[string][]byte, refs []string) map[string][]byte {
+	out := make(map[string][]byte, len(refs))
+	for _, ref := range refs {
+		out[ref] = bytes.Clone(input[ref])
+	}
+	return out
+}
+
+func protocolCredentialRefs(p protocol.Factory, s model.ListenerSpec) []string {
+	refs := slices.Clone(s.CredentialRefs)
+	if assets, ok := p.(protocol.CredentialReferencer); ok {
+		for _, ref := range assets.CredentialRefs(s) {
+			if !slices.Contains(refs, ref) {
+				refs = append(refs, ref)
+			}
+		}
+	}
+	return refs
 }

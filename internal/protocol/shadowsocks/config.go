@@ -3,6 +3,7 @@ package shadowsocks
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,17 +14,19 @@ import (
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/transport"
 	"github.com/sagernet/sing-shadowsocks/shadowaead"
+	"github.com/sagernet/sing-shadowsocks/shadowaead_2022"
 )
 
 var Methods = []string{"aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305"}
 
 type Options struct {
-	Method string `json:"method"`
+	Method       string `json:"method"`
+	ServerKeyRef string `json:"server_key_ref,omitempty"`
 }
 type Factory struct{}
 
 func (Factory) Capabilities() protocol.Capabilities {
-	return protocol.Capabilities{Type: "shadowsocks", TCP: true, UDP: true, TCPRelay: true, UDPRelay: true, Transports: []string{"native"}}
+	return protocol.Capabilities{Type: "shadowsocks", UDPOverTCP: true, Multiplex: true, TCP: true, UDP: true, TCPRelay: true, UDPRelay: true, Transports: []string{"native"}}
 }
 
 func parseOptions(spec model.ListenerSpec) (Options, error) {
@@ -37,8 +40,11 @@ func parseOptions(spec model.ListenerSpec) (Options, error) {
 	if err := decoder.Decode(&extra); err != io.EOF {
 		return options, errors.New("invalid Shadowsocks options")
 	}
-	if !slices.Contains(Methods, options.Method) {
-		return options, errors.New("method must be aes-128-gcm, aes-256-gcm or chacha20-ietf-poly1305")
+	if !slices.Contains(Methods, options.Method) && !slices.Contains(shadowaead_2022.List, options.Method) {
+		return options, errors.New("unsupported Shadowsocks AEAD or 2022 method")
+	}
+	if options.ServerKeyRef != "" && options.Method != "2022-blake3-aes-128-gcm" && options.Method != "2022-blake3-aes-256-gcm" {
+		return options, errors.New("multi-user requires a Shadowsocks 2022 AES-GCM method")
 	}
 	return options, nil
 }
@@ -48,13 +54,24 @@ func (Factory) Validate(spec model.ListenerSpec) []model.FieldError {
 	if _, err := parseOptions(spec); err != nil {
 		result = append(result, model.FieldError{Path: "options", Code: "invalid_options", Message: err.Error()})
 	}
-	if len(spec.CredentialRefs) != 1 {
-		result = append(result, model.FieldError{Path: "credential_refs", Code: "invalid_credentials", Message: "this Shadowsocks listener requires exactly one credential"})
+	options, _ := parseOptions(spec)
+	if options.ServerKeyRef != "" && slices.Contains(spec.CredentialRefs, options.ServerKeyRef) {
+		result = append(result, model.FieldError{Path: "options.server_key_ref", Code: "invalid_credentials", Message: "server key must be separate from user keys"})
+	}
+	if len(spec.CredentialRefs) == 0 || (options.ServerKeyRef == "" && len(spec.CredentialRefs) != 1) {
+		result = append(result, model.FieldError{Path: "credential_refs", Code: "invalid_credentials", Message: "single-user requires one credential; multi-user requires at least one user credential"})
 	}
 	return result
 }
 
 func (f Factory) Build(r protocol.ResolvedListenerSpec, d protocol.Dependencies) (transport.Binding, error) {
+	options, err := parseOptions(r.Spec)
+	if err != nil {
+		return transport.Binding{}, err
+	}
+	if slices.Contains(shadowaead_2022.List, options.Method) {
+		return f.build2022(r, d, options)
+	}
 	s, err := f.buildServer(r, d)
 	if err != nil {
 		return transport.Binding{}, err
@@ -95,4 +112,44 @@ func (f Factory) buildServer(resolved protocol.ResolvedListenerSpec, dependencie
 		server.saltSize = 32
 	}
 	return server, nil
+}
+
+func (Factory) CredentialRefs(spec model.ListenerSpec) []string {
+	options, err := parseOptions(spec)
+	if err != nil || options.ServerKeyRef == "" {
+		return nil
+	}
+	return []string{options.ServerKeyRef}
+}
+func (Factory) ValidateAssets(r protocol.ResolvedListenerSpec) error {
+	options, err := parseOptions(r.Spec)
+	if err != nil {
+		return err
+	}
+	refs := slices.Clone(r.Spec.CredentialRefs)
+	if options.ServerKeyRef != "" {
+		refs = append(refs, options.ServerKeyRef)
+	}
+	seen := map[string]bool{}
+	for _, ref := range refs {
+		secret := r.Credentials[ref]
+		if len(secret) == 0 {
+			return errors.New("empty Shadowsocks credential")
+		}
+		if slices.Contains(shadowaead_2022.List, options.Method) {
+			size := 32
+			if options.Method == "2022-blake3-aes-128-gcm" {
+				size = 16
+			}
+			key, err := base64.StdEncoding.Strict().DecodeString(string(secret))
+			if err != nil || len(key) != size || base64.StdEncoding.EncodeToString(key) != string(secret) {
+				return fmt.Errorf("Shadowsocks 2022 credentials must be canonical base64 of exactly %d bytes", size)
+			}
+			if seen[string(key)] {
+				return errors.New("duplicate Shadowsocks 2022 keys")
+			}
+			seen[string(key)] = true
+		}
+	}
+	return nil
 }
