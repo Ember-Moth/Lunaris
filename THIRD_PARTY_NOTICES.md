@@ -57,3 +57,12 @@ Mieru's source history and GPL-3.0-or-later notice are retained in [its README](
 SSR retains [NOTICE](internal/protocol/shadowsocksr/wire/NOTICE), [GPL-3.0 text](internal/protocol/shadowsocksr/wire/LICENSE), [Apache-2.0 text](internal/protocol/shadowsocksr/wire/LICENSE-Apache-2.0), and [MODIFICATIONS](internal/protocol/shadowsocksr/wire/MODIFICATIONS.md). The Apache-2.0 files preserve breakwa11's upstream notices; `protocol/auth_chain.go` preserves the GPL-3.0-only notices of Break Wa11 and ShadowsocksR contributors. Other imported original Polaris files remain GPL-3.0-or-later. File-level declarations take precedence.
 
 Lunaris changes integrate host-owned sockets and immutable credentials, bound and cancel sessions/buffers, adapt deadline and replay APIs, and repair receive-buffer ownership, codec concurrency and TLS ticket record bounds. New Lunaris adapters carry their own SPDX headers. The independent clients under `test/clients` are test-only modules and are not linked into the node binary.
+
+
+## Polaris VLESS Encryption and XTLS Vision
+
+`internal/protocol/vless/wire` is adapted from [HyperPteLtd/Polaris](https://github.com/HyperPteLtd/Polaris/tree/56d52fb44958ef3cc2a7fb841cd240f8206234b2/pkg/sagernet/sing-vmess) at commit `56d52fb44958ef3cc2a7fb841cd240f8206234b2`. The VLESS and mux codecs originate from [SagerNet/sing-vmess](https://github.com/SagerNet/sing-vmess), vendored by Polaris from `3aed155119a174c9290a4099841049f0cb275e02`, and retain GPL-3.0-or-later. Copyright (C) SagerNet contributors and 2026 Polaris contributors. The complete GPL text is retained in [LICENSE](LICENSE).
+
+`wire/encryption` derives from XTLS/Xray-core `proxy/vless/encryption`, `infra/conf/vless.go` and related crypto helpers at `b17a88f9b46dabbdc2f3dff232dc91d6e13758fe`. Its MPL-2.0 notices remain in each implementation file; the full license is in [LICENSES/MPL-2.0/MPL-2.0.txt](LICENSES/MPL-2.0/MPL-2.0.txt).
+
+Lunaris modifications (2026-11-01): isolated VLESS integration with released sing/vmess dependencies; standard-library cryptographic randomness; carrier-owned authentication deadlines; explicit TLS record exposure, including pointer-based REALITY record buffers; cancellable server padding/I/O; bounded ticket/replay caches and overflow checks; deadline-capable XUDP pipes, joined mux cleanup and serialized frame writes. New factory and regression files carry their own SPDX headers. Client codecs remain internal for regression testing. No local Go module replacement or sing-box runtime dependency is introduced.

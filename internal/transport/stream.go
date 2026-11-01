@@ -313,6 +313,10 @@ func (c *trackedConn) Close() error {
 	})
 	return err
 }
+
+// TLSRecordConn exposes the record layer to protocols that explicitly need it.
+func (c *trackedConn) TLSRecordConn() net.Conn { return c.Conn }
+
 func (c *trackedConn) CloseRead() error  { return N.CloseRead(c.Conn) }
 func (c *trackedConn) CloseWrite() error { return N.CloseWrite(c.Conn) }
 

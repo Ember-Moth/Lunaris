@@ -7,7 +7,7 @@
 | 协议 | UoT | smux / yamux / h2mux | REALITY |
 | --- | --- | --- | --- |
 | Shadowsocks classic AEAD / 2022 | 支持，须启用 TCP 监听 | 支持 | 不支持 |
-| VLESS | 支持 | 支持 | 支持，flow 留空 |
+| VLESS | 支持 | 支持 | 支持，可选 Vision |
 | VMess AEAD | 支持 | 支持 | 支持 |
 | Trojan | 支持 | 支持 | 支持 |
 | AnyTLS | 固定 v2，自动启用；拒绝 v1 | 使用协议自身的多流，不叠加 sing-mux | 支持 |
@@ -130,7 +130,7 @@ listeners:
 
 将 target 和 server_names 替换为实际 TLS 1.3 目标站点。`short_ids` 是最多 16 个十六进制字符、长度为偶数的字符串，空字符串表示允许空 short ID。时间差未设置时按 1 分钟处理；最大可设为 24 小时。`certificate_ref` 与 REALITY 配置互斥。
 
-已移植的 XHTTP 见[独立说明](xhttp.md)。尚未接入 Vision、VLESS 新加密、ML-DSA 附加签名或 gRPC。VLESS 客户端使用空 flow 和 `encryption: none`。
+已移植的 XHTTP 见[独立说明](xhttp.md)。VLESS 已支持 [Encryption 与 Vision](vless-encryption-vision.md)。本页原有示例仍使用空 flow 和 `encryption: none`；ML-DSA 和 gRPC 尚未接入。
 
 ## 生命周期与持久化
 

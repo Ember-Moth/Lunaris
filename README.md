@@ -159,3 +159,5 @@ Naive（HTTP/1.1、HTTP/2、HTTP/3）与 Shadowsocks 2022 单/多用户的配置
 已从 Polaris 移植 [XHTTP 传输](docs/xhttp.md)，覆盖三种上传模式与 HTTP/1.1–3；配置见 [xhttp.yaml](examples/xhttp.yaml)。
 
 新增 [Snell、Mieru 与 ShadowsocksR](docs/snell-mieru-ssr.md)，配置见 [示例](examples/snell-mieru-ssr.yaml)。
+
+VLESS 已支持 [Encryption、Vision 与 XUDP](docs/vless-encryption-vision.md)，可用 `lunaris keygen vless` 生成配置；示例见 [vless-encryption.yaml](examples/vless-encryption.yaml)。

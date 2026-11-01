@@ -130,3 +130,12 @@ UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadows
 - [x] 独立客户端、Mieru 受控丢包、SSR 经典方法与混淆、多用户验证及资源回收回归。
 
 支持范围与已知客户端问题见 [协议说明](snell-mieru-ssr.md)。
+
+## VLESS Encryption / Vision
+
+- [x] 三种 Encryption 模式、1-RTT/0-RTT、X25519/ML-KEM-768 认证及密钥链。
+- [x] Vision + TLS/REALITY，以及 Encryption + Vision 的所有流式传输；XUDP。
+- [x] 凭据引用、取消与缓存限额、轮换和停止回归。
+- [x] 96 个独立 Xray 互通组合、完整检查、管理构建和 Linux 双架构交叉编译。
+
+配置、互通脚本与证据范围见 [VLESS Encryption 与 Vision](vless-encryption-vision.md)。

@@ -85,3 +85,5 @@ func (c *helloReplay) CloseRead() error           { return N.CloseRead(c.Conn) }
 type legacyRealityConn struct{ *legacy.Conn }
 
 func (c *legacyRealityConn) CloseWrite() error { return c.Close() }
+
+func (c *legacyRealityConn) TLSRecordConn() net.Conn { return c.Conn }

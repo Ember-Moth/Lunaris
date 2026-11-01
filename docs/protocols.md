@@ -14,7 +14,7 @@
 | Mieru v3 | TCP / UDP | `native` | 使用协议自身加密 | TCP、UDP | 用户名与密码映射 |
 | ShadowsocksR | TCP / UDP | `native` | 使用选定 cipher/obfs | TCP、UDP | 单用户或 UID/密码映射 |
 | Naive | TCP 或 UDP | `http` 或 `quic` | 必须 | TCP、UDP（UoT） | 用户名与密码映射 |
-| VLESS | TCP；XHTTP h3 用 UDP | `tcp`、`ws`、`httpupgrade`、`reality`、`xhttp` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID |
+| VLESS | TCP；XHTTP h3 用 UDP | `tcp`、`ws`、`httpupgrade`、`reality`、`xhttp` | 可选 | TCP、原生 UDP / XUDP（Vision） | 一个或多个非零 UUID |
 | VMess AEAD | TCP；XHTTP h3 用 UDP | `tcp`、`ws`、`httpupgrade`、`reality`、`xhttp` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID；客户端 `alter_id: 0` |
 | Trojan | TCP；XHTTP h3 用 UDP | `tcp`、`ws`、`httpupgrade`、`reality`、`xhttp` | 必须 | TCP、UDP associate | 一个或多个密码 |
 | AnyTLS | TCP | `tcp`、`reality` | 必须 | TCP、UDP（内建 UoT v2） | 一个或多个密码 |
@@ -23,7 +23,7 @@
 
 省略 `network` 时按协议选择监听套接字。VLESS/VMess/Trojan/AnyTLS 省略传输时默认为 `tcp`，Naive 默认为 `http`；Hysteria2/TUIC 默认为 `quic`。不支持的组合会在 `check`、保存草稿和应用前被拒绝。
 
-VLESS/VMess 使用 `sing-vmess`，AnyTLS 使用 `sing-anytls`，Hysteria2/TUIC 使用 `sing-quic`。Trojan 在项目内按[原始协议](https://trojan-gfw.github.io/trojan/protocol)实现，地址解析、数据包缓冲和转发仍使用 sing。
+VMess 使用 `sing-vmess`；VLESS 使用从 Polaris 移植的 sing-vmess 扩展，AnyTLS 使用 `sing-anytls`，Hysteria2/TUIC 使用 `sing-quic`。Trojan 在项目内按[原始协议](https://trojan-gfw.github.io/trojan/protocol)实现，地址解析、数据包缓冲和转发仍使用 sing。
 
 ## 配置
 
@@ -55,8 +55,9 @@ listeners:
 - `ws` 和 `httpupgrade` 必须设置绝对 `path`，服务端精确匹配转义后的路径。路径不含 query/fragment；请求中的查询参数不参与路径匹配。
 - 可选 `host` 精确匹配 HTTP Host（大小写不敏感，端口属于 Host 的一部分）。省略它表示不限制 Host。
 - HTTP 传输使用 HTTP/1.1。WebSocket 只接受二进制数据帧，不启用压缩；单消息上限 1 MiB。HTTPUpgrade 升级后直接承载协议字节流。
+- VLESS 的 `options.flow` 与 `options.decryption_ref` 见 [Encryption 与 Vision](vless-encryption-vision.md)。
 - 凭据来源仍为 `secret`、`secret_env`、`secret_file` 三选一。VLESS/VMess 的 secret 是 UUID；SS2022 是 Base64 密钥；其他协议是密码。新增协议可在 `credential_refs` 中列多个用户，不允许重复协议身份。
-- VLESS、VMess、Trojan、AnyTLS 和 Hysteria2 当前没有额外 `options`，省略或写 `{}`。未知选项会报错，不会静默忽略。
+- VMess、Trojan、AnyTLS 和 Hysteria2 当前没有额外 `options`，省略或写 `{}`。未知选项会报错，不会静默忽略。
 
 TUIC 通过 UUID 区分用户，密码保持为独立凭据资产。`options.users` 必须与 `credential_refs` 一一对应：
 
@@ -109,7 +110,7 @@ python3 scripts/test-interop.py --client /path/to/sing-box --server bin/lunaris
 
 验证记录：2026-11-01，macOS arm64 上使用官方 sing-box 1.14.4（发行 SHA-256 已核对）完成 18 个组合。正式发行客户端是独立进程，但与服务端共享部分 SagerNet 协议库来源；此结果不代表所有其他客户端实现都已验证。独立工厂注册表重构后，同一发行客户端再次通过 19 个组合，新增 Shadowsocks 原生 TCP/UDP 覆盖。
 
-已增加 [UoT、sing-mux 和 REALITY](connection-extensions.md)，包括可选的旧客户端兼容。新增 [Naive 与 Shadowsocks 2022](naive-ss2022.md)，包含 AES 同端口多用户。已移植 [XHTTP](xhttp.md)。仍不宣称支持 Vision、gRPC、WebSocket early-data 或协议内的 PacketAddr/XUDP 扩展。部分库能解析额外指令，不作为已验证产品能力。
+已增加 [UoT、sing-mux 和 REALITY](connection-extensions.md)，包括可选的旧客户端兼容。新增 [Naive 与 Shadowsocks 2022](naive-ss2022.md)，包含 AES 同端口多用户。已移植 [XHTTP](xhttp.md) 和 [VLESS Encryption、Vision、XUDP](vless-encryption-vision.md)。仍不宣称支持 gRPC、WebSocket early-data 或 PacketAddr 扩展。部分库能解析额外指令，不作为已验证产品能力。
 
 本地互通和交叉编译不等同于真实 Linux、公网丢包/MTU、长期运行和压力验证；这些环境验收仍待完成。
 
