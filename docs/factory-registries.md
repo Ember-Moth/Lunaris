@@ -17,7 +17,7 @@ flowchart TD
 
 | 注册表 | 注册项 | 职责 |
 | --- | --- | --- |
-| `protocol.Registry` | Shadowsocks、VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC、Naive 各自的 `Factory` | 协议能力、选项和凭据校验，创建协议处理器 |
+| `protocol.Registry` | Shadowsocks、VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC、Naive、Snell、Mieru、ShadowsocksR 各自的 `Factory` | 协议能力、选项和凭据校验，创建协议处理器 |
 | `transport.Registry` | `NativeFactory`、`TCPFactory`、`WebSocketFactory`、`HTTPUpgradeFactory`、`QUICFactory`、`RealityFactory`、`HTTPFactory`、`XHTTPFactory` | 传输配置校验，创建并拥有监听 socket、TLS、升级连接和 QUIC transport |
 
 注册表拒绝 nil 工厂、空类型和重复类型，通过 `Lookup` 查找，通过 `Capabilities` 返回排序后的能力。不会通过包初始化函数隐式注册，也不在请求处理过程中修改注册表。
@@ -74,3 +74,5 @@ QUIC transport 的创建、连接准入和回收统一位于 `internal/transport
 回归覆盖注册冲突、空工厂、缺失传输、组合拒绝、默认网络交集、能力快照、UDP 部分绑定失败、停止截止后继续清理、既有凭据/证书轮换和故障恢复。客户端互通通过 `scripts/test-interop.py` 复跑；支持范围仍以[协议与传输矩阵](protocols.md)为准。
 
 XHTTP 工厂通过可选的 `ConfiguredFactory.CapabilitiesFor` 根据 HTTP 版本选择实际套接字网络；组合层允许流式协议使用明确声明 `UDPStreams` 的传输。XHTTP 自身管理重建流和上传队列，底层 HTTP/QUIC 连接仍使用现有传输生命周期。详见 [XHTTP](xhttp.md)。
+
+Mieru 的 managed 服务入口由原生传输传入 socket/连接，协议不创建运行时监听端口；首个加密元数据认证后通过 `ReleaseHandshake` 释放载体握手名额，后续逻辑会话另行限额。SSR 的共享 cipher 密码通过 `CredentialReferencer` 声明，Snell 直接使用远程 `sing-snell` 服务接口。

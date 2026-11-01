@@ -358,6 +358,9 @@ type Bridge struct{ Handler RelayHandler }
 
 type protocolReadyKey struct{}
 
+// ReleaseHandshake releases carrier admission after the protocol authenticates it.
+func ReleaseHandshake(ctx context.Context) { authenticated(ctx) }
+
 func authenticated(ctx context.Context) {
 	if ready, ok := ctx.Value(protocolReadyKey{}).(func()); ok {
 		ready()

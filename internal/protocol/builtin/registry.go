@@ -6,8 +6,11 @@ import (
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/protocol/anytls"
 	"github.com/Ember-Moth/Lunaris/internal/protocol/hysteria2"
+	"github.com/Ember-Moth/Lunaris/internal/protocol/mieru"
 	"github.com/Ember-Moth/Lunaris/internal/protocol/naive"
 	"github.com/Ember-Moth/Lunaris/internal/protocol/shadowsocks"
+	"github.com/Ember-Moth/Lunaris/internal/protocol/shadowsocksr"
+	"github.com/Ember-Moth/Lunaris/internal/protocol/snell"
 	"github.com/Ember-Moth/Lunaris/internal/protocol/trojan"
 	"github.com/Ember-Moth/Lunaris/internal/protocol/tuic"
 	"github.com/Ember-Moth/Lunaris/internal/protocol/vless"
@@ -16,7 +19,7 @@ import (
 )
 
 func NewProtocols() (*protocol.Registry, error) {
-	return protocol.NewRegistry(shadowsocks.Factory{}, vless.Factory{}, vmess.Factory{}, trojan.Factory{}, anytls.Factory{}, hysteria2.Factory{}, tuic.Factory{}, naive.Factory{})
+	return protocol.NewRegistry(shadowsocks.Factory{}, vless.Factory{}, vmess.Factory{}, trojan.Factory{}, anytls.Factory{}, hysteria2.Factory{}, tuic.Factory{}, naive.Factory{}, snell.Factory{}, mieru.Factory{}, shadowsocksr.Factory{})
 }
 func NewRegistry() (*inbound.Registry, error) {
 	p, err := NewProtocols()

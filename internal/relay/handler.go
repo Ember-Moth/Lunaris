@@ -245,16 +245,6 @@ func (c *idlePacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr
 	return err
 }
 
-func (c *idlePacketConn) FrontHeadroom() int {
-	if v, ok := c.PacketConn.(interface{ FrontHeadroom() int }); ok {
-		return v.FrontHeadroom()
-	}
-	return 0
-}
-func (c *idlePacketConn) RearHeadroom() int {
-	if v, ok := c.PacketConn.(interface{ RearHeadroom() int }); ok {
-		return v.RearHeadroom()
-	}
-	return 0
-}
-func (*idlePacketConn) ReaderMTU() int { return 65535 }
+func (c *idlePacketConn) FrontHeadroom() int { return N.CalculateFrontHeadroom(c.PacketConn) }
+func (c *idlePacketConn) RearHeadroom() int  { return N.CalculateRearHeadroom(c.PacketConn) }
+func (*idlePacketConn) ReaderMTU() int       { return 65535 }

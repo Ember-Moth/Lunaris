@@ -122,3 +122,11 @@ UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadows
 - [x] 原始移植测试、节点回归、独立 Xray 47 个组合。
 
 实现与验证边界见 [XHTTP](xhttp.md)。
+
+## Snell、Mieru 与 ShadowsocksR
+
+- [x] 直接依赖 sing-snell，接入 v5/v6 TCP、UDP 与复用。
+- [x] 从 Polaris 移植 Mieru 与 SSR 的协议实现，接入现有工厂、凭据和生命周期。
+- [x] 独立客户端、Mieru 受控丢包、SSR 经典方法与混淆、多用户验证及资源回收回归。
+
+支持范围与已知客户端问题见 [协议说明](snell-mieru-ssr.md)。

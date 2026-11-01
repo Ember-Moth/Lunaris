@@ -33,6 +33,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 | [`sing-vmess`](https://github.com/SagerNet/sing-vmess) | VMess 与 VLESS 协议服务 |
 | [`sing-quic`](https://github.com/SagerNet/sing-quic) | Hysteria2、TUIC 等 QUIC 协议服务 |
 | [`sing-anytls`](https://github.com/SagerNet/sing-anytls) | AnyTLS 协议服务 |
+| [`sing-snell`](https://github.com/SagerNet/sing-snell) | Snell v5/v6 服务 |
 
 已接入上述库的 Shadowsocks AEAD、VLESS、VMess、Hysteria2、TUIC 和 AnyTLS，并基于 sing 独立实现 Trojan。直接使用上游 Go module 并锁定版本，不维护本地 vendor、副本模块或本地 replace。
 
@@ -156,3 +157,5 @@ systemd 样例提供[文件模式](packaging/systemd/lunaris.service)和[管理�
 Naive（HTTP/1.1、HTTP/2、HTTP/3）与 Shadowsocks 2022 单/多用户的配置和验证边界见 [协议说明](docs/naive-ss2022.md)。
 
 已从 Polaris 移植 [XHTTP 传输](docs/xhttp.md)，覆盖三种上传模式与 HTTP/1.1–3；配置见 [xhttp.yaml](examples/xhttp.yaml)。
+
+新增 [Snell、Mieru 与 ShadowsocksR](docs/snell-mieru-ssr.md)，配置见 [示例](examples/snell-mieru-ssr.yaml)。

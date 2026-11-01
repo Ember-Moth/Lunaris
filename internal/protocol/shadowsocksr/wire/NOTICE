@@ -1,0 +1,35 @@
+sing-shadowsocksr
+Copyright (C) 2026 Polaris contributors
+
+Unless a file header says otherwise, this module is licensed under the GNU
+General Public License, version 3 or any later version (GPL-3.0-or-later). The
+full GPL-3.0 text is in LICENSE.
+
+The following files derive from upstream ShadowsocksR code and keep its
+copyright and license. Polaris translated them to Go and modified them; the
+dates are in MODIFICATIONS.md.
+
+protocol/verify.go, protocol/legacy_auth.go, protocol/legacy_helpers.go,
+obfs/tls10.go
+    Copyright 2015-2015 breakwa11
+    Licensed under the Apache License, Version 2.0; the full text is in
+    LICENSE-Apache-2.0.
+    Source: https://github.com/shadowsocksr-backup/shadowsocksr
+      shadowsocks/obfsplugin/verify.py and auth.py at
+      db6629a1307ed38eb507bd926ad1503e90bc4eb1;
+      shadowsocks/obfsplugin/auth.py (auth_simple) at
+      a440a726f6d3a25fe2eeac94786580f462a314a7;
+      shadowsocks/obfsplugin/obfs_tls.py at
+      1fe6e89c0752458b18acc343899323a88c44015d.
+
+protocol/auth_chain.go
+    Copyright 2015-2016 Break Wa11 and ShadowsocksR contributors
+    Licensed under the GNU General Public License, version 3 only
+    (GPL-3.0-only); the full text is in LICENSE.
+    Source: https://github.com/ShadowsocksR-Live/shadowsocksr-native
+      src/obfs/auth_chain.c at 227127c4bc5a6555e0556693d084c96860e75b5e
+      (tag 0.9.4): the auth_chain_c-f salts, length-table generation and
+      padding selection.
+
+Because protocol/auth_chain.go is GPL-3.0-only, this module as a whole, and
+any program that links it, can only be distributed under GPL-3.0-only.

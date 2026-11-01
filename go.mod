@@ -14,12 +14,14 @@ require (
 	github.com/sagernet/sing-mux v0.3.10-0.20260929204512-caf09fe32475
 	github.com/sagernet/sing-quic v0.7.1
 	github.com/sagernet/sing-shadowsocks v0.2.9-0.20260929204512-65740e0f0e3e
+	github.com/sagernet/sing-snell v0.0.0-20260904135315-bc5a12ac736f
 	github.com/sagernet/sing-vmess v0.2.8
 	github.com/xtls/reality v0.0.0-20261014101318-83f621788ca8
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/crypto v0.57.0
 	golang.org/x/net v0.58.0
 	golang.org/x/sys v0.49.0
+	google.golang.org/protobuf v1.34.1
 	lukechampine.com/blake3 v1.3.0
 	modernc.org/sqlite v1.61.1
 )
@@ -60,7 +62,6 @@ require (
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
-	google.golang.org/protobuf v1.34.1 // indirect
 	modernc.org/libc v1.79.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect

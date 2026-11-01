@@ -1,6 +1,6 @@
 # 协议、传输与证书
 
-状态：2026-11-01，已接入八类节点协议，Shadowsocks 同时支持 classic AEAD 与 2022。所有协议共用 sing 转发与运行管理；直接依赖上游 Go modules，不使用 sing-box 模块、本地 vendor 或本地 replace。HTTP 管理 API 和 Web 仍后置。
+状态：2026-11-01，已接入十一类节点协议，Shadowsocks 同时支持 classic AEAD 与 2022。所有协议共用 sing 转发与运行管理；直接依赖上游 Go modules，不使用 sing-box 模块、本地 vendor 或本地 replace。HTTP 管理 API 和 Web 仍后置。
 
 ## 支持矩阵
 
@@ -10,6 +10,9 @@
 | --- | --- | --- | --- | --- | --- |
 | Shadowsocks classic AEAD | TCP / UDP | 不设置 | 无 | TCP、UDP | 每监听器一个密码 |
 | Shadowsocks 2022 | TCP / UDP | 不设置 | 无 | TCP、UDP | 单用户密钥；AES 支持多用户 |
+| Snell v5/v6 | TCP | `tcp` | 使用协议自身格式 | TCP、UDP | 每监听器一个 PSK |
+| Mieru v3 | TCP / UDP | `native` | 使用协议自身加密 | TCP、UDP | 用户名与密码映射 |
+| ShadowsocksR | TCP / UDP | `native` | 使用选定 cipher/obfs | TCP、UDP | 单用户或 UID/密码映射 |
 | Naive | TCP 或 UDP | `http` 或 `quic` | 必须 | TCP、UDP（UoT） | 用户名与密码映射 |
 | VLESS | TCP；XHTTP h3 用 UDP | `tcp`、`ws`、`httpupgrade`、`reality`、`xhttp` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID |
 | VMess AEAD | TCP；XHTTP h3 用 UDP | `tcp`、`ws`、`httpupgrade`、`reality`、`xhttp` | 可选 | TCP、原生 UDP 帧 | 一个或多个非零 UUID；客户端 `alter_id: 0` |
@@ -109,3 +112,5 @@ python3 scripts/test-interop.py --client /path/to/sing-box --server bin/lunaris
 已增加 [UoT、sing-mux 和 REALITY](connection-extensions.md)，包括可选的旧客户端兼容。新增 [Naive 与 Shadowsocks 2022](naive-ss2022.md)，包含 AES 同端口多用户。已移植 [XHTTP](xhttp.md)。仍不宣称支持 Vision、gRPC、WebSocket early-data 或协议内的 PacketAddr/XUDP 扩展。部分库能解析额外指令，不作为已验证产品能力。
 
 本地互通和交叉编译不等同于真实 Linux、公网丢包/MTU、长期运行和压力验证；这些环境验收仍待完成。
+
+Snell、Mieru、ShadowsocksR 的详细配置、版本限制及独立客户端证据见[说明](snell-mieru-ssr.md)。
