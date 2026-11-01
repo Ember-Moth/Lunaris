@@ -40,6 +40,9 @@ func (QUICFactory) Capabilities() Capabilities {
 	return Capabilities{Type: "quic", UDP: true, TLS: true, UDPStreams: true}
 }
 func (QUICFactory) Validate(s model.ListenerSpec) []model.FieldError {
+	if len(s.Transport.Plugin) > 0 {
+		return field("transport.plugin", "plugin settings require a plugin transport")
+	}
 	if s.CertificateRef == "" {
 		return field("certificate_ref", "QUIC requires a TLS certificate")
 	}

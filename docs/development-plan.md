@@ -139,3 +139,11 @@ UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadows
 - [x] 96 个独立 Xray 互通组合、完整检查、管理构建和 Linux 双架构交叉编译。
 
 配置、互通脚本与证据范围见 [VLESS Encryption 与 Vision](vless-encryption-vision.md)。
+
+## Shadowsocks 插件
+
+- [x] simple-obfs、v2ray-plugin、gost-plugin、ShadowTLS、Restls、kcptun。
+- [x] 独立传输工厂、凭据引用、流/会话认证预算、目标连接生命周期、密码轮换。
+- [x] 原始 Mihomo v1.19.33 客户端的 162 个 classic AEAD / SS2022 组合和 4 个错误凭据拒绝/恢复检查。
+
+配置与证据范围见[Shadowsocks 插件](shadowsocks-plugins.md)。

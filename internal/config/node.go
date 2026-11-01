@@ -56,6 +56,7 @@ type listenerDocument struct {
 }
 
 type transportDocument struct {
+	Plugin  map[string]any `yaml:"plugin"`
 	Type    string         `yaml:"type"`
 	Path    string         `yaml:"path"`
 	Host    string         `yaml:"host"`
@@ -69,6 +70,13 @@ type transportDocument struct {
 
 func (d transportDocument) build() (model.Transport, error) {
 	result := model.Transport{Type: d.Type, Path: d.Path, Host: d.Host, Reality: d.Reality}
+	if d.Plugin != nil {
+		raw, err := json.Marshal(d.Plugin)
+		if err != nil {
+			return result, errors.New("plugin settings must contain JSON-compatible values")
+		}
+		result.Plugin = raw
+	}
 	if d.XHTTP != nil {
 		extra, err := json.Marshal(d.XHTTP.Extra)
 		if err != nil {

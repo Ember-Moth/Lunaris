@@ -25,31 +25,32 @@ type ServeFunc func(context.Context, net.Conn, M.Socksaddr, N.CloseHandlerFunc) 
 // socketServer owns the listening socket and every carrier, including hijacked HTTP
 // connections and multiplexed streams. Protocol handlers own no listener.
 type socketServer struct {
-	Spec            ResolvedSpec
-	Limits          model.Limits
-	TLS             *tls.Config
-	prepare         func(context.Context) error
-	cleanup         func()
-	handshake       func(context.Context, net.Conn) (net.Conn, error)
-	upgrade         func(*socketServer, http.ResponseWriter, *http.Request)
-	packet          *PacketHandler
-	udp             net.PacketConn
-	closeErr        error
-	Serve           ServeFunc
-	OnStart         func() error
-	OnClose         func() error
-	mu              sync.Mutex
-	ctx             context.Context
-	cancel          context.CancelFunc
-	listener        net.Listener
-	http            *http.Server
-	started, closed bool
-	conns           map[*trackedConn]struct{}
-	pending         chan struct{}
-	wg              sync.WaitGroup
-	once            sync.Once
-	events          chan InstanceEvent
-	done            chan struct{}
+	Spec               ResolvedSpec
+	Limits             model.Limits
+	TLS                *tls.Config
+	prepare            func(context.Context) error
+	cleanup            func()
+	handshake          func(context.Context, net.Conn) (net.Conn, error)
+	upgrade            func(*socketServer, http.ResponseWriter, *http.Request)
+	packet             *PacketHandler
+	udp                net.PacketConn
+	closeErr           error
+	Serve              ServeFunc
+	OnStart            func() error
+	OnClose            func() error
+	mu                 sync.Mutex
+	ctx                context.Context
+	cancel             context.CancelFunc
+	listener           net.Listener
+	http               *http.Server
+	httpMaxHeaderBytes int
+	started, closed    bool
+	conns              map[*trackedConn]struct{}
+	pending            chan struct{}
+	wg                 sync.WaitGroup
+	once               sync.Once
+	events             chan InstanceEvent
+	done               chan struct{}
 }
 
 func newSocketServer(spec ResolvedSpec, binding Binding, upgrade func(*socketServer, http.ResponseWriter, *http.Request)) (*socketServer, error) {
@@ -78,7 +79,7 @@ func newSocketServer(spec ResolvedSpec, binding Binding, upgrade func(*socketSer
 	if err != nil {
 		return nil, err
 	}
-	s := &socketServer{Spec: spec, Limits: spec.Limits, TLS: tlsConfig, upgrade: upgrade, packet: binding.Packet, conns: make(map[*trackedConn]struct{}), pending: make(chan struct{}, spec.Limits.MaxPendingHandshakes), events: make(chan InstanceEvent, 4), done: make(chan struct{})}
+	s := &socketServer{Spec: spec, Limits: spec.Limits, TLS: tlsConfig, upgrade: upgrade, packet: binding.Packet, conns: make(map[*trackedConn]struct{}), pending: make(chan struct{}, spec.Limits.MaxPendingHandshakes), events: make(chan InstanceEvent, 4), done: make(chan struct{}), httpMaxHeaderBytes: 8192}
 	if binding.Stream != nil {
 		s.Serve = binding.Stream.Serve
 		s.OnStart = binding.Stream.Start
@@ -144,7 +145,7 @@ func (s *socketServer) Start(parent context.Context) error {
 	if s.listener != nil {
 		s.wg.Add(1)
 		if s.upgrade != nil {
-			s.http = &http.Server{Handler: http.HandlerFunc(s.serveHTTP), ReadHeaderTimeout: s.Limits.HandshakeTimeout, MaxHeaderBytes: 8192, ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+			s.http = &http.Server{Handler: http.HandlerFunc(s.serveHTTP), ReadHeaderTimeout: s.Limits.HandshakeTimeout, MaxHeaderBytes: s.httpMaxHeaderBytes, ConnContext: func(ctx context.Context, c net.Conn) context.Context {
 				return context.WithValue(s.ctx, carrierKey{}, c.(*trackedConn))
 			}}
 			s.http.SetKeepAlivesEnabled(false)

@@ -66,3 +66,18 @@ Lunaris changes integrate host-owned sockets and immutable credentials, bound an
 `wire/encryption` derives from XTLS/Xray-core `proxy/vless/encryption`, `infra/conf/vless.go` and related crypto helpers at `b17a88f9b46dabbdc2f3dff232dc91d6e13758fe`. Its MPL-2.0 notices remain in each implementation file; the full license is in [LICENSES/MPL-2.0/MPL-2.0.txt](LICENSES/MPL-2.0/MPL-2.0.txt).
 
 Lunaris modifications (2026-11-01): isolated VLESS integration with released sing/vmess dependencies; standard-library cryptographic randomness; carrier-owned authentication deadlines; explicit TLS record exposure, including pointer-based REALITY record buffers; cancellable server padding/I/O; bounded ticket/replay caches and overflow checks; deadline-capable XUDP pipes, joined mux cleanup and serialized frame writes. New factory and regression files carry their own SPDX headers. Client codecs remain internal for regression testing. No local Go module replacement or sing-box runtime dependency is introduced.
+
+
+## Shadowsocks plugins
+
+`internal/transport/ssplugin` was adapted from [HyperPteLtd/Polaris](https://github.com/HyperPteLtd/Polaris/tree/56d52fb44958ef3cc2a7fb841cd240f8206234b2/internal/protocol/shadowsocks/plugin), commit `56d52fb44958ef3cc2a7fb841cd240f8206234b2`.
+
+Copyright (C) 2026 Polaris contributors. Original Polaris adapter files retain GPL-3.0-or-later unless a file-level notice states otherwise. The GPL version 3 text is in [LICENSE](LICENSE).
+
+- `ssplugin/obfs` retains GPL-3.0-only and its MetaCubeX/mihomo simple-obfs source notice.
+- `ssplugin/v2ray/mux.go`, `mux_write.go` and `session.go` derive from XTLS/Xray-core common/mux at `b17a88f9b46d` and retain MPL-2.0. The license is in [LICENSES/MPL-2.0/MPL-2.0.txt](LICENSES/MPL-2.0/MPL-2.0.txt).
+- `ssplugin/kcptun/common.go` and `server.go` derive from MetaCubeX/mihomo transport/kcptun and retain MIT. The applicable notice is in [LICENSES/MIT/mihomo-kcptun.txt](LICENSES/MIT/mihomo-kcptun.txt).
+- The Restls adapter at `ssplugin/restls/wire` was ported from Polaris's `pkg/sagernet/sing-restls`, with its [BSD-3-Clause license](internal/transport/ssplugin/restls/wire/LICENSE) and [modification history](internal/transport/ssplugin/restls/wire/MODIFICATIONS.md). It links the external `github.com/metacubex/restls-client-go` v0.1.9 engine.
+- ShadowTLS links the released `github.com/sagernet/sing-shadowtls` v0.2.1 (GPL-3.0-or-later). KCP uses `github.com/metacubex/kcp-go` at `550693377604`; smux and snappy remain external modules.
+
+Lunaris modifications (2026-11-01): independent transport-factory integration; secret references; strict options and resource bounds; WebSocket early-data validation; logical and physical authentication budgets; cancellable target ownership with Restls deadline promotion; KCP unauthenticated session limits; serialization and record-size bounds around released ShadowTLS I/O; released smux API adaptation. New wrappers and regression tests have their own SPDX headers. The independent Mihomo test client is a separate module and is not part of the node's production dependency graph.

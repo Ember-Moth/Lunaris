@@ -1,0 +1,88 @@
+schema_version: 1
+credentials:
+  - id: ss-user
+    secret_env: LUNARIS_SS_PASSWORD
+  - id: plugin-password
+    secret_env: LUNARIS_PLUGIN_PASSWORD
+certificates:
+  - id: edge
+    certificate_file: fullchain.pem
+    private_key_file: privkey.pem
+listeners:
+  - id: ss-obfs
+    protocol: shadowsocks
+    address: 127.0.0.1
+    port: 8101
+    credential_refs: [ss-user]
+    options: {method: aes-128-gcm}
+    udp_over_tcp: true
+    transport:
+      type: obfs
+      plugin: {mode: tls}
+  - id: ss-v2ray
+    protocol: shadowsocks
+    address: 127.0.0.1
+    port: 8102
+    credential_refs: [ss-user]
+    certificate_ref: edge
+    options: {method: aes-128-gcm}
+    udp_over_tcp: true
+    transport:
+      type: v2ray-plugin
+      host: proxy.example.com
+      path: /proxy
+      plugin: {mux: true}
+  - id: ss-gost
+    protocol: shadowsocks
+    address: 127.0.0.1
+    port: 8103
+    credential_refs: [ss-user]
+    certificate_ref: edge
+    options: {method: aes-128-gcm}
+    udp_over_tcp: true
+    transport:
+      type: gost-plugin
+      host: proxy.example.com
+      path: /proxy
+      plugin: {mux: true}
+  - id: ss-shadowtls
+    protocol: shadowsocks
+    address: 127.0.0.1
+    port: 8104
+    credential_refs: [ss-user]
+    options: {method: aes-128-gcm}
+    udp_over_tcp: true
+    transport:
+      type: shadow-tls
+      plugin:
+        version: 3
+        password_ref: plugin-password
+        handshake: www.example.com:443
+        strict-mode: true
+  - id: ss-restls
+    protocol: shadowsocks
+    address: 127.0.0.1
+    port: 8105
+    credential_refs: [ss-user]
+    options: {method: aes-128-gcm}
+    udp_over_tcp: true
+    transport:
+      type: restls
+      plugin:
+        password_ref: plugin-password
+        dest: www.example.com:443
+  - id: ss-kcptun
+    protocol: shadowsocks
+    address: 127.0.0.1
+    port: 8106
+    credential_refs: [ss-user]
+    options: {method: aes-128-gcm}
+    udp_over_tcp: true
+    transport:
+      type: kcptun
+      plugin:
+        key_ref: plugin-password
+        crypt: aes
+        mode: fast
+        nocomp: false
+        smuxver: 1

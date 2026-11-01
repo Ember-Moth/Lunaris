@@ -8,8 +8,8 @@
 
 | 协议 | `network` | `transport.type` | TLS | 转发 | 凭据 |
 | --- | --- | --- | --- | --- | --- |
-| Shadowsocks classic AEAD | TCP / UDP | 不设置 | 无 | TCP、UDP | 每监听器一个密码 |
-| Shadowsocks 2022 | TCP / UDP | 不设置 | 无 | TCP、UDP | 单用户密钥；AES 支持多用户 |
+| Shadowsocks classic AEAD | 原生 TCP/UDP；插件按载体 | `native` 或[插件](shadowsocks-plugins.md) | 按插件 | TCP、原生 UDP / UoT | 每监听器一个密码 |
+| Shadowsocks 2022 | 原生 TCP/UDP；插件按载体 | `native` 或[插件](shadowsocks-plugins.md) | 按插件 | TCP、原生 UDP / UoT | 单用户密钥；AES 支持多用户 |
 | Snell v5/v6 | TCP | `tcp` | 使用协议自身格式 | TCP、UDP | 每监听器一个 PSK |
 | Mieru v3 | TCP / UDP | `native` | 使用协议自身加密 | TCP、UDP | 用户名与密码映射 |
 | ShadowsocksR | TCP / UDP | `native` | 使用选定 cipher/obfs | TCP、UDP | 单用户或 UID/密码映射 |
@@ -115,3 +115,5 @@ python3 scripts/test-interop.py --client /path/to/sing-box --server bin/lunaris
 本地互通和交叉编译不等同于真实 Linux、公网丢包/MTU、长期运行和压力验证；这些环境验收仍待完成。
 
 Snell、Mieru、ShadowsocksR 的详细配置、版本限制及独立客户端证据见[说明](snell-mieru-ssr.md)。
+
+Shadowsocks classic AEAD 与 SS2022 已支持[六类内置插件](shadowsocks-plugins.md)。插件在传输注册表中选择；kcptun 使用 UDP 套接字，其余插件使用 TCP，UDP 转发通过显式启用的 UoT 提供。

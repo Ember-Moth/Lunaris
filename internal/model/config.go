@@ -34,11 +34,12 @@ type Multiplex struct {
 
 // Transport describes the carrier; Network describes the listening sockets.
 type Transport struct {
-	Type    string   `json:"type,omitempty" yaml:"type"`
-	Path    string   `json:"path,omitempty" yaml:"path"`
-	Host    string   `json:"host,omitempty" yaml:"host"`
-	Reality *Reality `json:"reality,omitempty" yaml:"reality"`
-	XHTTP   *XHTTP   `json:"xhttp,omitempty" yaml:"-"`
+	Plugin  json.RawMessage `json:"plugin,omitempty" yaml:"-"`
+	Type    string          `json:"type,omitempty" yaml:"type"`
+	Path    string          `json:"path,omitempty" yaml:"path"`
+	Host    string          `json:"host,omitempty" yaml:"host"`
+	Reality *Reality        `json:"reality,omitempty" yaml:"reality"`
+	XHTTP   *XHTTP          `json:"xhttp,omitempty" yaml:"-"`
 }
 
 type XHTTP struct {
@@ -57,6 +58,7 @@ type Reality struct {
 }
 
 func (t Transport) Clone() Transport {
+	t.Plugin = bytes.Clone(t.Plugin)
 	if t.XHTTP != nil {
 		x := *t.XHTTP
 		x.Extra = bytes.Clone(x.Extra)

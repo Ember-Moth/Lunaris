@@ -72,7 +72,7 @@ Shadowsocks 支持以下方法：
 | `aes-256-gcm` | 已实现 | 已实现 |
 | `chacha20-ietf-poly1305` | 已实现 | 已实现 |
 
-Shadowsocks classic AEAD 每个监听器使用一份凭据；SS2022 的两种 AES 方法支持同端口多用户。SS2022 三种方法和 Naive 的配置见 [协议说明](docs/naive-ss2022.md)。Shadowsocks 尚不支持 TLS 插件。Linux/macOS 可用 SIGHUP 重载 YAML，只重建受影响的监听器；这些监听器的旧连接会关闭。
+Shadowsocks classic AEAD 每个监听器使用一份凭据；SS2022 的两种 AES 方法支持同端口多用户。SS2022 三种方法和 Naive 的配置见 [协议说明](docs/naive-ss2022.md)。Shadowsocks 插件见[独立说明](docs/shadowsocks-plugins.md)。Linux/macOS 可用 SIGHUP 重载 YAML，只重建受影响的监听器；这些监听器的旧连接会关闭。
 
 配置版本、凭据/证书资产、幂等应用和重启恢复可通过本机 CLI 使用。管理员认证、HTTP 管理 API 和 Web 操作仍后置，管理界面骨架尚未连接配置服务。协议细节与验证范围见 [Shadowsocks 实现说明](docs/shadowsocks.md)。
 
@@ -161,3 +161,5 @@ Naive（HTTP/1.1、HTTP/2、HTTP/3）与 Shadowsocks 2022 单/多用户的配置
 新增 [Snell、Mieru 与 ShadowsocksR](docs/snell-mieru-ssr.md)，配置见 [示例](examples/snell-mieru-ssr.yaml)。
 
 VLESS 已支持 [Encryption、Vision 与 XUDP](docs/vless-encryption-vision.md)，可用 `lunaris keygen vless` 生成配置；示例见 [vless-encryption.yaml](examples/vless-encryption.yaml)。
+
+已接入 [Shadowsocks 的六类插件](docs/shadowsocks-plugins.md)：simple-obfs、v2ray-plugin、gost-plugin、ShadowTLS、Restls 与 kcptun；配置见 [shadowsocks-plugins.yaml](examples/shadowsocks-plugins.yaml)。

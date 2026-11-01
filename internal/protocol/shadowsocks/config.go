@@ -26,7 +26,7 @@ type Options struct {
 type Factory struct{}
 
 func (Factory) Capabilities() protocol.Capabilities {
-	return protocol.Capabilities{Type: "shadowsocks", UDPOverTCP: true, Multiplex: true, TCP: true, UDP: true, TCPRelay: true, UDPRelay: true, Transports: []string{"native"}}
+	return protocol.Capabilities{Type: "shadowsocks", UDPOverTCP: true, Multiplex: true, TCP: true, UDP: true, TCPRelay: true, UDPRelay: true, TLS: true, Transports: []string{"native", "obfs", "v2ray-plugin", "gost-plugin", "shadow-tls", "restls", "kcptun"}}
 }
 
 func parseOptions(spec model.ListenerSpec) (Options, error) {

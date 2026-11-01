@@ -28,6 +28,9 @@ func (f XHTTPFactory) CapabilitiesFor(s model.ListenerSpec) Capabilities {
 	return c
 }
 func (f XHTTPFactory) Validate(s model.ListenerSpec) []model.FieldError {
+	if len(s.Transport.Plugin) > 0 {
+		return field("transport.plugin", "plugin settings require a plugin transport")
+	}
 	if s.Transport.Reality != nil {
 		return field("transport.reality", "XHTTP does not combine with the REALITY transport")
 	}

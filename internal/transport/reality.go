@@ -25,6 +25,9 @@ func (RealityFactory) Capabilities() Capabilities {
 	return Capabilities{Type: "reality", TCP: true, Secure: true}
 }
 func (RealityFactory) Validate(s model.ListenerSpec) []model.FieldError {
+	if len(s.Transport.Plugin) > 0 {
+		return field("transport.plugin", "plugin settings require a plugin transport")
+	}
 	if s.Transport.XHTTP != nil {
 		return field("transport.xhttp", "XHTTP settings require the xhttp transport")
 	}
