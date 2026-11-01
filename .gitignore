@@ -1,0 +1,11 @@
+/bin/
+/data/
+/coverage/
+/web/node_modules/
+/web/dist/
+/web/*.tsbuildinfo
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example

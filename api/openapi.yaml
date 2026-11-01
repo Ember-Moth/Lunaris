@@ -1,0 +1,53 @@
+openapi: 3.1.0
+info:
+  title: Lunaris bootstrap API
+  version: 0.0.0
+  description: >-
+    Implemented scaffold endpoints only. Authenticated management APIs are
+    specified in docs/management-api.md and are not available yet.
+  license:
+    name: GNU General Public License v3.0
+    identifier: GPL-3.0-only
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Check the local management service and storage
+      responses:
+        '200':
+          description: Management service and storage are reachable; no proxy readiness implied.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [code, msg, data]
+                properties:
+                  code:
+                    type: integer
+                    const: 0
+                  msg:
+                    type: string
+                  data:
+                    type: object
+                    required: [status]
+                    properties:
+                      status:
+                        type: string
+                        const: ok
+        '503':
+          description: Storage is unavailable.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [code, msg, data]
+                properties:
+                  code:
+                    type: integer
+                    const: 50300
+                  msg:
+                    type: string
+                  data:
+                    type: 'null'

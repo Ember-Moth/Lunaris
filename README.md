@@ -52,9 +52,50 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 
 ## 当前状态
 
-项目处于架构设计阶段，尚无可运行程序。文档中的 API、模块和 CLI 是实现约定。
+已建立可构建、可启动的工程骨架：Hertz 服务、React + shadcn/ui 页面、前端资源内嵌、YAML 启动配置、SQLite 初始迁移与目录锁、sing 协议接口和 OpenAPI 类型生成。
+
+当前仅提供管理服务健康检查和启动页面；管理员初始化、登录、配置应用、证书管理及代理协议尚未实现，未注册任何代理协议。服务暂时只允许绑定回环地址。
 
 首版应打通“安装启动 → 浏览器初始化与登录 → 创建协议监听 → 保存并应用 → 客户端连接”的完整流程。首批协议和具体传输组合尚未确定。
+
+## 本地开发
+
+需要 Go 1.26 或更新版本、Node.js 24 和 pnpm 12.16.1。先构建前端，再编译或测试 Go，确保二进制包含真实前端资源。
+
+```sh
+make install
+make build
+./bin/lunaris serve --config config.example.yaml
+```
+
+打开 `http://127.0.0.1:9080`。进程入口是根目录 `main.go`，命令与依赖组装在 `cmd/run.go`。YAML 中的相对数据目录以配置文件所在目录为基准，命令行参数可覆盖地址与数据目录。
+
+```yaml
+data_dir: ./data
+admin:
+  listen: 127.0.0.1:9080
+```
+
+需要前端热更新时，先启动上述后端，再在另一终端执行 `pnpm --dir web dev`；Vite 将 `/healthz` 和 `/api` 代理到本机 9080 端口。
+
+```sh
+make check       # 前端构建与 lint、go vet、race 测试
+./bin/lunaris version
+```
+
+构建入口使用 Hertz 的 `stdjson` 标签，避免管理 API 的 JSON 加速库受 Go 内部实现变化影响。`web/dist` 和 `bin` 是生成产物，不提交；`go.sum`、pnpm lockfile 和生成的 API 类型纳入版本控制。
+
+## HTTP API
+
+统一响应信封为 `{code,msg,data}`：成功 code 为 0，错误为非零整数；同时保留正确的 HTTP 状态码。健康检查不代表代理节点已经配置或可以转发。
+
+```json
+{"code":0,"msg":"ok","data":{"status":"ok"}}
+```
+
+当前实际接口见 [OpenAPI](api/openapi.yaml)；完整管理功能的规划见 [API 契约](docs/management-api.md)。配置文件使用 YAML，HTTP 请求和响应使用 JSON。
+
+目标目录中的 `node`、`relay`、`egress` 等模块会随实际协议接入创建，不用空实现冒充运行能力。systemd 样例位于 [packaging/systemd](packaging/systemd/lunaris.service)，尚未自动安装到系统。
 
 ## 许可证
 

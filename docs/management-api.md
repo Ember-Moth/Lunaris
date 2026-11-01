@@ -1,11 +1,12 @@
 # Web 管理 API 契约
 
-面向 React + shadcn/ui 管理界面的设计契约，尚未实现。由 Hertz 提供同源 HTTP API。具体状态语义见 [配置生命周期](configuration-lifecycle.md)，模块边界见 [总体架构](architecture.md)。实现时将本文转换为 `api/openapi.yaml`，作为 TypeScript 类型生成与契约校验的来源，不同时维护另一份手工协议类型。
+面向 React + shadcn/ui 管理界面的业务设计契约，由 Hertz 提供同源 HTTP API。具体状态语义见 [配置生命周期](configuration-lifecycle.md)，模块边界见 [总体架构](architecture.md)。`api/openapi.yaml` 当前只描述已经实现的健康检查；随着业务接入逐项补齐，作为 TypeScript 类型生成与契约校验的来源。下表不代表路由已经全部实现。
 
 ## 1. 通用约定
 
 - 路径前缀 `/api/v1`，UTF-8 JSON；时间为 UTC RFC 3339；资源 ID 是不透明字符串。
-- 成功返回业务对象；失败返回统一 error 对象，HTTP 状态码表达失败类型，不使用 HTTP 200 包装全部错误。
+- 成功和失败都返回 `{code,msg,data}`。`code` 为整数，成功为 0，非零为错误；`msg` 为可读说明；`data` 为业务数据或 null，不省略字段。HTTP 状态码仍表达成功或失败，不使用 HTTP 200 包装全部错误。
+- 无业务数据的成功响应使用 HTTP 200 和 `{code:0,msg:"ok",data:null}`；不使用无信封的 204。HEAD 遵循 HTTP 语义不返回响应体。静态文件响应不使用 API 信封。
 - 默认需要管理员会话。仅初始化状态、初始化提交、登录端点允许未登录访问，并分别执行 token 或登录校验。
 - 普通 GET 没有副作用。所有写操作校验 Origin/Host；会话建立后的写操作另需 `X-CSRF-Token`。
 - API 响应设置 `Cache-Control: no-store`。敏感导出、凭据请求体和登录请求不记录原文。
@@ -16,9 +17,9 @@
 
 ```json
 {
-  "error": {
-    "code": "invalid_configuration",
-    "message": "配置包含无效字段",
+  "code": 42200,
+  "msg": "配置包含无效字段",
+  "data": {
     "fields": [
       {"path": "listeners[0].port", "code": "out_of_range", "message": "端口超出允许范围"}
     ],
@@ -37,6 +38,10 @@
 | 413 / 429 | 请求过大 / 超过速率或并发限制 |
 | 500 / 503 | 内部失败 / 存储或管理服务暂不可用 |
 
+初始通用错误码为 HTTP 状态码乘以 100，例如 40400、40500、50300。业务错误在对应区间分配稳定编号，例如 40901 表示应用进行中、40902 表示计划过期、40903 表示幂等键冲突。前端按 code 处理流程，不能匹配 msg 文本。字段级错误和 request_id 放在 data 中。
+
+健康检查 `GET /healthz` 是无需登录的例外，只返回 `{code:0,msg:"ok",data:{status:"ok"}}` 或 `{code:50300,msg:"Service unavailable",data:null}`，不返回账户、配置或存储路径。它不代表代理协议可用。
+
 已经受理的异步应用失败通过 operation 状态表达；查询该 operation 本身成功仍返回 200。
 
 ## 2. 初始化与会话
@@ -47,7 +52,7 @@
 | `POST /setup` | 一次性 token + 管理员名称/密码；事务内建立账户并消费 token，返回 201，随后正常登录 |
 | `POST /auth/login` | 校验用户名和密码，创建会话 cookie，返回账户摘要与 CSRF token |
 | `GET /auth/session` | 返回当前账户摘要、会话过期时间与 CSRF token |
-| `POST /auth/logout` | 撤销当前会话并清 cookie，返回 204 |
+| `POST /auth/logout` | 撤销当前会话并清 cookie，返回成功信封，data 为 null |
 | `PUT /auth/password` | 当前密码 + 新密码；成功后撤销全部会话，要求重新登录 |
 | `POST /auth/reauth` | 再次校验管理员密码，建立短时的敏感操作授权，与当前会话绑定 |
 
@@ -85,6 +90,8 @@
 | `POST /config/draft/from-revision` | 将历史版本复制为新草稿；要求 If-Match，不直接切换运行态 |
 
 `PUT /config/draft` 的协议字段使用带判别字段的 schema，并引用 CredentialAsset / CertificateAsset 的 ID。`enabled` 也属于版本化配置：点击启停保存草稿，经过同一计划和应用流程；没有另一条绕过 committed 状态的启停通道。
+
+各表所述的返回字段都放在信封 data 内，例如 `{code:0,msg:"ok",data:{operation_id:"op_example"}}`。请求体按端点定义，不额外套响应信封。
 
 计划请求指定 `draft_revision` 和 `base_revision`；返回服务端 `plan_id`、有效期、runtime_epoch、create/replace/disable/remove/recover 列表及会中断连接的监听器。计划仅是预览，不是对端口占用的保留。
 
@@ -125,7 +132,7 @@ Content-Type: application/json
 
 ## 6. 导入、导出和管理边界
 
-`GET /config/template` 返回不含秘密材料的模板；`POST /config/import` 带 If-Match，把模板和明确的资产映射校验后保存为新草稿，不自动应用。无法解析的引用返回字段错误；用户不能将脱敏模板误认为完整备份。
+`GET /config/template` 的信封 data 包含 `format: "yaml"` 与 YAML 文本 `content`；不包含秘密材料。`POST /config/import` 带 If-Match，在 JSON 请求中提交 YAML 文本及资产映射，校验后保存为新草稿，不自动应用。YAML 解析与字段校验失败返回统一错误信封；用户不能将脱敏模板误认为完整备份。
 
 完整数据库备份与还原、管理监听地址变更、管理 HTTPS 引导和丢失管理员密码后的恢复，首版走受控本机 CLI/部署设置。Web 不提供任意命令执行、任意文件读取或在线替换数据库接口。
 

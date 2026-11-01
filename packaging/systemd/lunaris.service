@@ -1,0 +1,23 @@
+[Unit]
+Description=Lunaris self-hosted proxy node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=true
+StateDirectory=lunaris
+StateDirectoryMode=0700
+WorkingDirectory=/var/lib/lunaris
+ExecStart=/usr/local/bin/lunaris serve --config /etc/lunaris/bootstrap.yaml --data-dir /var/lib/lunaris
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
