@@ -81,3 +81,5 @@ Copyright (C) 2026 Polaris contributors. Original Polaris adapter files retain G
 - ShadowTLS links the released `github.com/sagernet/sing-shadowtls` v0.2.1 (GPL-3.0-or-later). KCP uses `github.com/metacubex/kcp-go` at `550693377604`; smux and snappy remain external modules.
 
 Lunaris modifications (2026-11-01): independent transport-factory integration; secret references; strict options and resource bounds; WebSocket early-data validation; logical and physical authentication budgets; cancellable target ownership with Restls deadline promotion; KCP unauthenticated session limits; serialization and record-size bounds around released ShadowTLS I/O; released smux API adaptation. New wrappers and regression tests have their own SPDX headers. The independent Mihomo test client is a separate module and is not part of the node's production dependency graph.
+
+VLESS mux follow-up (2026-11-02): flush each serialized write batch before releasing its writer lock; arrival counters cannot identify the final lock owner under concurrent scheduling. The imported GPL-3.0-or-later notices remain intact.

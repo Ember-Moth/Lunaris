@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	vmess "github.com/sagernet/sing-vmess"
@@ -74,7 +73,6 @@ type serverSession struct {
 	streams      map[uint16]*serverStream
 	writer       *std_bufio.Writer
 	writeAccess  sync.Mutex
-	writeRace    uint32
 	maxStreams   int
 }
 
@@ -283,7 +281,6 @@ func (c *serverSession) syncWrite(sessionID uint16, data []byte) (int, error) {
 	if len(data) == 0 {
 		return 0, nil
 	}
-	writeRace := atomic.AddUint32(&c.writeRace, 1)
 	c.writeAccess.Lock()
 	defer c.writeAccess.Unlock()
 	written := 0
@@ -298,11 +295,10 @@ func (c *serverSession) syncWrite(sessionID uint16, data []byte) (int, error) {
 		written += len(chunk)
 		data = data[len(chunk):]
 	}
-	if writeRace == atomic.LoadUint32(&c.writeRace) {
-		err := c.writer.Flush()
-		if err != nil {
-			return written, err
-		}
+	// Arrival sequence is not mutex acquisition order. Every writer must
+	// flush its own completed batch before releasing ownership.
+	if err := c.writer.Flush(); err != nil {
+		return written, err
 	}
 	return written, nil
 }
@@ -335,18 +331,14 @@ func (c *serverSession) syncWritePacket(sessionID uint16, data []byte, destinati
 	if len(data) > math.MaxUint16 {
 		return 0, os.ErrInvalid
 	}
-	writeRace := atomic.AddUint32(&c.writeRace, 1)
 	c.writeAccess.Lock()
 	defer c.writeAccess.Unlock()
 	err := c.writePacketFrame(sessionID, data, destination)
 	if err != nil {
 		return 0, err
 	}
-	if writeRace == atomic.LoadUint32(&c.writeRace) {
-		err = c.writer.Flush()
-		if err != nil {
-			return 0, err
-		}
+	if err = c.writer.Flush(); err != nil {
+		return 0, err
 	}
 	return len(data), nil
 }
@@ -405,18 +397,14 @@ func (c *serverSession) localClose(sessionID uint16, err error) bool {
 }
 
 func (c *serverSession) syncClose(sessionID uint16, hasError bool) error {
-	writeRace := atomic.AddUint32(&c.writeRace, 1)
 	c.writeAccess.Lock()
 	defer c.writeAccess.Unlock()
 	err := c.writeCloseFrame(sessionID, hasError)
 	if err != nil {
 		return err
 	}
-	if writeRace == atomic.LoadUint32(&c.writeRace) {
-		err = c.writer.Flush()
-		if err != nil {
-			return err
-		}
+	if err = c.writer.Flush(); err != nil {
+		return err
 	}
 	return nil
 }
