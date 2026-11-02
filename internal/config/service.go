@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -37,6 +38,12 @@ type Service struct {
 	activeRevision  string
 	knownHeads      model.ConfigHeads
 	mode            string
+	activeOperation string
+	restoreError    string
+	reservedTCP     []netip.AddrPort
+	plans           map[string]ApplicationPlan
+	events          chan model.ApplyOperation
+	uncertain       *model.ApplyOperation
 }
 
 type ServiceStatus struct {
@@ -48,12 +55,20 @@ type ServiceStatus struct {
 	WritesBlocked   bool              `json:"writes_blocked"`
 	Applying        bool              `json:"applying"`
 	BlockReason     string            `json:"block_reason,omitempty"`
+	ActiveOperation string            `json:"active_operation_id,omitempty"`
+	RestoreError    string            `json:"restore_error,omitempty"`
 	Runtime         node.Status       `json:"runtime"`
 }
 
 // OpenService restores only the committed revision in managed mode. Offline
 // mode starts empty so an invalid old binding cannot prevent an explicit repair.
 func OpenService(ctx context.Context, repository ports.Repository, registry *inbound.Registry, restore bool) (*Service, error) {
+	return openService(ctx, repository, registry, restore, false, nil)
+}
+func OpenManagementService(ctx context.Context, repository ports.Repository, registry *inbound.Registry, reserved []netip.AddrPort) (*Service, error) {
+	return openService(ctx, repository, registry, true, true, reserved)
+}
+func openService(ctx context.Context, repository ports.Repository, registry *inbound.Registry, restore, repair bool, reserved []netip.AddrPort) (*Service, error) {
 	if ctx == nil || repository == nil || registry == nil {
 		return nil, errors.New("configuration service dependencies are required")
 	}
@@ -67,24 +82,46 @@ func OpenService(ctx context.Context, repository ports.Repository, registry *inb
 	if err != nil {
 		return fail(err)
 	}
-	initial := &model.RuntimeConfig{Config: model.NodeConfig{SchemaVersion: model.ConfigSchemaVersion, Limits: model.DefaultLimits(), Listeners: []model.ListenerSpec{}}, Credentials: map[string][]byte{}}
-	mode, active := "offline", ""
+	empty := &model.RuntimeConfig{Config: model.NodeConfig{SchemaVersion: model.ConfigSchemaVersion, Limits: model.DefaultLimits(), Listeners: []model.ListenerSpec{}}, Credentials: map[string][]byte{}}
+	initial := empty
+	mode, active, restoreError := "offline", "", ""
 	if restore {
+		mode, active = "managed", heads.CommittedRevision
 		initial, err = repository.Resolve(ctx, heads.CommittedRevision)
+	}
+	if err == nil {
+		initial, err = registry.Normalize(initial)
+	}
+	if err == nil {
+		err = checkReserved(initial, reserved)
+	}
+	var runtime *node.Runtime
+	if repair {
+		restoreErr := err
+		runtime, err = node.Start(ctx, empty, registry, nil)
 		if err != nil {
 			return fail(err)
 		}
-		mode, active = "managed", heads.CommittedRevision
+		if restoreErr == nil {
+			_, restoreErr = runtime.Apply(ctx, initial)
+		}
+		if restoreErr != nil {
+			// Retain this runtime even if failed restoration still owns resources.
+			// A new empty runtime would forget them and incorrectly permit replacement.
+			restoreError = "committed proxy configuration could not be restored"
+			initial, active = empty, ""
+		}
+	} else {
+		if err == nil {
+			runtime, err = node.Start(ctx, initial, registry, nil)
+		}
+		if err != nil {
+			return fail(fmt.Errorf("restore committed configuration: %w", err))
+		}
 	}
-	initial, err = registry.Normalize(initial)
-	if err != nil {
-		return fail(err)
-	}
-	runtime, err := node.Start(ctx, initial, registry, nil)
-	if err != nil {
-		return fail(fmt.Errorf("restore committed configuration: %w", err))
-	}
-	return &Service{ctx: ctx, cancel: cancel, repository: repository, registry: registry, runtime: runtime, release: release, gate: make(chan struct{}, 1), actual: initial, activeRevision: active, knownHeads: heads, mode: mode}, nil
+
+	return &Service{ctx: ctx, cancel: cancel, repository: repository, registry: registry, runtime: runtime, release: release, gate: make(chan struct{}, 1), actual: initial, activeRevision: active, knownHeads: heads, mode: mode, restoreError: restoreError, reservedTCP: append([]netip.AddrPort(nil), reserved...), plans: make(map[string]ApplicationPlan), events: make(chan model.ApplyOperation, 32)}, nil
+
 }
 
 func (s *Service) enter(ctx context.Context) error {
@@ -132,7 +169,7 @@ func (s *Service) SaveDraft(ctx context.Context, expected string, input *model.R
 	if err := s.writable(); err != nil {
 		return model.ConfigRevision{}, err
 	}
-	normalized, err := s.registry.Normalize(input)
+	normalized, err := s.normalize(input)
 	if err != nil {
 		return model.ConfigRevision{}, err
 	}
@@ -186,7 +223,7 @@ func (s *Service) Apply(ctx context.Context, key, target, expectedBase string) (
 	if err != nil {
 		return model.ApplyOperation{}, err
 	}
-	snapshot, err = s.registry.Normalize(snapshot)
+	snapshot, err = s.normalize(snapshot)
 	if err != nil {
 		return model.ApplyOperation{}, err
 	}
@@ -197,10 +234,26 @@ func (s *Service) Apply(ctx context.Context, key, target, expectedBase string) (
 	if replayed {
 		return replayResult(op)
 	}
+	return s.runAccepted(work, op, snapshot, nil)
+}
+
+func (s *Service) runAccepted(work context.Context, op model.ApplyOperation, snapshot *model.RuntimeConfig, epoch *uint64) (finished model.ApplyOperation, cause error) {
+	defer func() {
+		if finished.Status == "uncertain" {
+			s.rememberUncertain(finished)
+		}
+		if finished.ID != "" {
+			select {
+			case s.events <- finished:
+			default:
+			}
+		}
+	}()
 	s.mu.Lock()
 	s.applying = true
+	s.activeOperation = op.ID
 	s.mu.Unlock()
-	defer func() { s.mu.Lock(); s.applying = false; s.mu.Unlock() }()
+	defer func() { s.mu.Lock(); s.applying = false; s.activeOperation = ""; s.mu.Unlock() }()
 	s.mu.RLock()
 	baseline := s.actual
 	oldActive := s.activeRevision
@@ -208,7 +261,7 @@ func (s *Service) Apply(ctx context.Context, key, target, expectedBase string) (
 	if err := s.repository.SetPhase(work, op.ID, "applying"); err != nil {
 		return s.finishFailure(op, "interrupted", "operation could not begin", err)
 	}
-	result, applyErr := s.runtime.Apply(work, snapshot)
+	result, applyErr := s.runtime.ApplyExpected(work, snapshot, epoch)
 	if applyErr != nil {
 		status := "failed"
 		switch result.Outcome {
@@ -226,7 +279,7 @@ func (s *Service) Apply(ctx context.Context, key, target, expectedBase string) (
 	}
 	s.mu.Lock()
 	s.actual = snapshot
-	s.activeRevision = target
+	s.activeRevision = op.TargetRevision
 	s.mu.Unlock()
 	if err := s.repository.SetPhase(work, op.ID, "committing"); err != nil {
 		return s.commitFailure(op, baseline, oldActive, err)
@@ -267,6 +320,7 @@ func (s *Service) confirm(op model.ApplyOperation) {
 	s.knownHeads.CommittedRevision = op.TargetRevision
 	s.knownHeads.DraftRevision = op.TargetRevision
 	s.activeRevision = op.TargetRevision
+	s.restoreError = ""
 	s.mu.Unlock()
 }
 
@@ -338,7 +392,7 @@ func (s *Service) commitFailure(op model.ApplyOperation, baseline *model.Runtime
 
 func (s *Service) Status(ctx context.Context) (ServiceStatus, error) {
 	s.mu.RLock()
-	status := ServiceStatus{Mode: s.mode, Heads: s.knownHeads, RuntimeRevision: s.activeRevision, WritesBlocked: s.blocked || s.closed, Applying: s.applying, BlockReason: s.blockReason}
+	status := ServiceStatus{Mode: s.mode, Heads: s.knownHeads, RuntimeRevision: s.activeRevision, WritesBlocked: s.blocked || s.closed, Applying: s.applying, BlockReason: s.blockReason, ActiveOperation: s.activeOperation, RestoreError: s.restoreError}
 	s.mu.RUnlock()
 	heads, err := s.repository.Heads(ctx)
 	if err == nil {
@@ -350,6 +404,8 @@ func (s *Service) Status(ctx context.Context) (ServiceStatus, error) {
 	status.Provisional = !status.HeadsKnown || status.RuntimeRevision != status.Heads.CommittedRevision
 	return status, err
 }
+
+func (s *Service) OperationEvents() <-chan model.ApplyOperation { return s.events }
 
 func (s *Service) Errors() <-chan error { return s.runtime.Errors() }
 func (s *Service) ShutdownTimeout() time.Duration {

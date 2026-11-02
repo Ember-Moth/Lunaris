@@ -1,6 +1,6 @@
 # 配置应用与恢复
 
-本文描述 [总体架构](architecture.md) 的目标状态契约。P3 已实现不依赖 HTTP 的版本、资产、幂等应用与重启恢复，当前入口与具体状态见 [持久化配置服务](persistent-configuration.md)。本页中的 HTTP plan token、前端交互和更细的操作阶段仍为 P5/P6 设计。P2 文件模式差异应用见 [运行重载](runtime-reload.md)。
+本文描述 [总体架构](architecture.md) 的目标状态契约。P3 已实现不依赖 HTTP 的版本、资产、幂等应用与重启恢复，当前入口与具体状态见 [持久化配置服务](persistent-configuration.md)。HTTP plan token 与异步管理应用已在 P5 接入；当前 phase 为 accepted/applying/committing/finished，细节见[实现说明](management-implementation.md)。下文阶段图表示语义步骤，P6 前端交互仍待实现。P2 文件模式差异应用见 [运行重载](runtime-reload.md)。
 
 ## 1. 不变量
 

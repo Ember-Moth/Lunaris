@@ -25,6 +25,7 @@ func CheckReplay(operation model.ApplyOperation, target, base string) error {
 }
 
 var (
+	ErrInvalidInput        = errors.New("invalid storage input")
 	ErrNotFound            = errors.New("stored resource not found")
 	ErrConflict            = errors.New("configuration revision conflict")
 	ErrBusy                = errors.New("a configuration application is already running")

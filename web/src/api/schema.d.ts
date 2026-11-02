@@ -4,6 +4,460 @@
  */
 
 export interface paths {
+    "/api/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** login */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** logout */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** changePassword */
+        put: operations["changePassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/reauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** reauthenticate */
+        post: operations["reauthenticate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getSession */
+        get: operations["getSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getCapabilities */
+        get: operations["getCapabilities"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** listCertificates */
+        get: operations["listCertificates"];
+        put?: never;
+        /** createCertificate */
+        post: operations["createCertificate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/certificates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** deleteCertificate */
+        delete: operations["deleteCertificate"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * applyConfiguration
+         * @description Persisted admission precedes 202. The accepted job survives HTTP disconnection and logout. Idempotency lookup precedes plan expiry and survives restart; the same key with changed input conflicts.
+         */
+        post: operations["applyConfiguration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/committed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getCommitted */
+        get: operations["getCommitted"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getDraft */
+        get: operations["getDraft"];
+        /** saveDraft */
+        put: operations["saveDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/draft/from-revision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** draftFromRevision */
+        post: operations["draftFromRevision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * importConfiguration
+         * @description Imports the template shape into a draft, never applies it. YAML aliases and local file/environment reads are rejected.
+         */
+        post: operations["importConfiguration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** createApplicationPlan */
+        post: operations["createApplicationPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** listRevisions */
+        get: operations["listRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getConfigurationTemplate */
+        get: operations["getConfigurationTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/config/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** validateConfiguration */
+        post: operations["validateConfiguration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** listCredentials */
+        get: operations["listCredentials"];
+        put?: never;
+        /** createCredential */
+        post: operations["createCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/credentials/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** deleteCredential */
+        delete: operations["deleteCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/listeners/{id}/connection-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * getConnectionInfo
+         * @description Requires reauthentication within the last five minutes and matching committed/runtime identity. Explicit host required; wildcard bind addresses are not exported as client hosts.
+         */
+        post: operations["getConnectionInfo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getLogs */
+        get: operations["getLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getOperation */
+        get: operations["getOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** setupAdministrator */
+        post: operations["setupAdministrator"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/setup/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getSetupStatus */
+        get: operations["getSetupStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getStatus */
+        get: operations["getStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getSystemVersion */
+        get: operations["getSystemVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -24,15 +478,1825 @@ export interface paths {
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: never;
+    schemas: {
+        Account: {
+            id: string;
+            username: string;
+        };
+        ApplyAccepted: {
+            operation: components["schemas"]["Operation"];
+            operation_id: string;
+        };
+        ApplyRequest: {
+            acknowledge_disconnects?: boolean;
+            plan_id: string;
+        };
+        /** @description Stable logical aliases to immutable asset IDs. No raw secrets or server file/environment paths. */
+        AssetBindings: {
+            [key: string]: string;
+        };
+        Capabilities: {
+            /** @constant */
+            connection_info_format: "parameters-v1";
+            credential_kinds: string[];
+            protocols: components["schemas"]["ProtocolCapability"][];
+            /** @constant */
+            schema_version: 1;
+            shadowsocks_methods: string[];
+            snell_versions: number[];
+            transports: components["schemas"]["TransportCapability"][];
+            vless_flows: string[];
+        };
+        CertificateAsset: {
+            /** Format: date-time */
+            created_at: string;
+            dns_names: string[] | null;
+            fingerprint: string;
+            id: string;
+            label: string;
+            /** Format: date-time */
+            not_after: string;
+            /** Format: date-time */
+            not_before: string;
+            reference_count: number;
+            references: components["schemas"]["Reference"][];
+            references_truncated: boolean;
+            subject: string;
+        };
+        CertificateCreate: {
+            certificate: string;
+            label?: string;
+            private_key: string;
+        };
+        Change: {
+            /** @enum {string} */
+            action: "unchanged" | "create" | "replace" | "disable" | "remove" | "recover";
+            closes_connections: boolean;
+            id: string;
+        };
+        /** @description Client-neutral connection parameters, not an importable client profile. Contains only the selected user secret and required shared plugin keys; TLS private keys, REALITY private keys and VLESS server decryption keys are never returned. */
+        ConnectionInfo: {
+            authentication: {
+                [key: string]: unknown;
+            };
+            committed_revision: string;
+            endpoint: {
+                host: string;
+                port: number;
+            };
+            /** @constant */
+            format: "parameters-v1";
+            listen_network: string[];
+            listener_id: string;
+            multiplex: components["schemas"]["Multiplex"];
+            protocol: string;
+            protocol_options: {
+                [key: string]: unknown;
+            };
+            spec_digest: string;
+            transport: {
+                [key: string]: unknown;
+            };
+            udp_over_tcp: boolean;
+        };
+        ConnectionRequest: {
+            committed_revision: string;
+            credential_ref?: string;
+            host: string;
+            port?: number;
+            server_name?: string;
+        };
+        CredentialAsset: {
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            kind: string;
+            label: string;
+            reference_count: number;
+            references: components["schemas"]["Reference"][];
+            references_truncated: boolean;
+        };
+        /** @description Exactly one of secret or generate=true. Secret material is never returned by this endpoint. */
+        CredentialCreate: {
+            generate?: boolean;
+            /**
+             * @default generic
+             * @enum {string}
+             */
+            kind: "generic" | "password" | "uuid" | "ss2022-128" | "ss2022-256" | "x25519" | "vless-encryption";
+            label?: string;
+            secret?: string;
+        };
+        DraftInput: {
+            certificate_assets?: components["schemas"]["AssetBindings"];
+            config: components["schemas"]["NodeConfig"];
+            credential_assets?: components["schemas"]["AssetBindings"];
+        };
+        Error: {
+            code: number;
+            data: {
+                [key: string]: unknown;
+            } | null;
+            msg: string;
+        };
+        FieldError: {
+            code: string;
+            message: string;
+            path: string;
+        };
+        Heads: {
+            committed_revision: string;
+            draft_revision: string;
+        };
+        ImportRequest: {
+            certificate_assets?: components["schemas"]["AssetBindings"];
+            content: string;
+            credential_assets?: components["schemas"]["AssetBindings"];
+        };
+        Limits: {
+            /**
+             * Format: int64
+             * @description Nanoseconds. Defaults are applied when omitted.
+             */
+            dial_timeout?: number;
+            /**
+             * Format: int64
+             * @description Nanoseconds. Defaults are applied when omitted.
+             */
+            handshake_timeout?: number;
+            max_connections?: number;
+            max_pending_handshakes?: number;
+            max_udp_destinations?: number;
+            max_udp_sessions?: number;
+            /**
+             * Format: int64
+             * @description Nanoseconds. Defaults are applied when omitted.
+             */
+            shutdown_timeout?: number;
+            /**
+             * Format: int64
+             * @description Nanoseconds. Defaults are applied when omitted.
+             */
+            udp_idle_timeout?: number;
+            udp_queue_size?: number;
+        };
+        Listener: components["schemas"]["Listener_shadowsocks"] | components["schemas"]["Listener_vless"] | components["schemas"]["Listener_vmess"] | components["schemas"]["Listener_trojan"] | components["schemas"]["Listener_anytls"] | components["schemas"]["Listener_hysteria2"] | components["schemas"]["Listener_tuic"] | components["schemas"]["Listener_naive"] | components["schemas"]["Listener_snell"] | components["schemas"]["Listener_mieru"] | components["schemas"]["Listener_shadowsocksr"];
+        Listener_anytls: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: Record<string, never> | null;
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "anytls";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_hysteria2: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: Record<string, never> | null;
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "hysteria2";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_mieru: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: {
+                mtu?: number | 0;
+                traffic_pattern?: string;
+                user_hint_is_mandatory?: boolean;
+                users: components["schemas"]["NamedUser"][];
+            };
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "mieru";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_naive: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: {
+                users: components["schemas"]["NamedUser"][];
+            };
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "naive";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_shadowsocks: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: {
+                /** @enum {string} */
+                method: "aes-128-gcm" | "aes-256-gcm" | "chacha20-ietf-poly1305" | "2022-blake3-aes-128-gcm" | "2022-blake3-aes-256-gcm" | "2022-blake3-chacha20-poly1305";
+                server_key_ref?: string;
+            };
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "shadowsocks";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_shadowsocksr: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: {
+                method: string;
+                obfs?: string;
+                obfs_param?: string;
+                protocol: string;
+                protocol_param?: string;
+                server_key_ref?: string;
+                users?: components["schemas"]["SSRUser"][];
+            };
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "shadowsocksr";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_snell: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: {
+                mode?: string;
+                /** @enum {string} */
+                obfs?: "" | "none" | "http" | "tls";
+                /**
+                 * @default 5
+                 * @enum {integer}
+                 */
+                version: 5 | 6;
+            } | null;
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "snell";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_trojan: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: Record<string, never> | null;
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "trojan";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_tuic: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: {
+                /** @enum {string} */
+                congestion_control?: "" | "cubic" | "new_reno" | "bbr";
+                users: components["schemas"]["TUICUser"][];
+            };
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "tuic";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_vless: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: {
+                decryption_ref?: string;
+                /** @enum {string} */
+                flow?: "" | "xtls-rprx-vision";
+            } | null;
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "vless";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        Listener_vmess: {
+            /** @default 127.0.0.1 */
+            address: string;
+            certificate_ref?: string;
+            credential_refs: string[];
+            /** @default false */
+            enabled: boolean;
+            id: string;
+            multiplex?: components["schemas"]["Multiplex"];
+            name?: string;
+            network?: ("tcp" | "udp")[];
+            options: Record<string, never> | null;
+            port: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            protocol: "vmess";
+            transport?: components["schemas"]["Transport"];
+            udp_over_tcp?: boolean;
+        };
+        ListenerStatus: {
+            active_tcp: number;
+            active_udp: number;
+            address: string;
+            generation: number;
+            id: string;
+            last_error?: string;
+            name: string;
+            network: string[];
+            port: number;
+            protocol: string;
+            provisional: boolean;
+            spec_digest: string;
+            /** @enum {string} */
+            state: "disabled" | "starting" | "running" | "stopping" | "stopped" | "failed";
+        };
+        LogEntry: {
+            level: string;
+            message: string;
+            operation_id?: string;
+            request_id?: string;
+            sequence: number;
+            /** Format: date-time */
+            time: string;
+        };
+        LogPage: {
+            boot_id: string;
+            entries: components["schemas"]["LogEntry"][];
+            next_cursor: string;
+            restarted: boolean;
+            truncated: boolean;
+        };
+        LoginRequest: {
+            password: string;
+            username: string;
+        };
+        Multiplex: {
+            enabled?: boolean;
+            padding?: boolean;
+        };
+        NamedUser: {
+            credential_ref: string;
+            username: string;
+        };
+        NodeConfig: {
+            limits?: components["schemas"]["Limits"];
+            listeners: components["schemas"]["Listener"][];
+            /**
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+        };
+        Operation: {
+            base_revision: string;
+            /** Format: date-time */
+            created_at: string;
+            error?: string;
+            id: string;
+            /** @enum {string} */
+            phase: "accepted" | "applying" | "committing" | "finished";
+            /** @enum {string} */
+            status: "running" | "succeeded" | "failed" | "failed_rolled_back" | "degraded" | "interrupted" | "uncertain";
+            target_revision: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        PasswordRequest: {
+            current_password: string;
+            new_password: string;
+        };
+        Plan: {
+            base_revision: string;
+            boot_id: string;
+            changes: components["schemas"]["Change"][];
+            draft_revision: string;
+            /** Format: date-time */
+            expires_at: string;
+            plan_id: string;
+            runtime_epoch: number;
+        };
+        PlanRequest: {
+            base_revision: string;
+            draft_revision: string;
+        };
+        ProtocolCapability: {
+            multiplex: boolean;
+            tcp: boolean;
+            tcp_relay: boolean;
+            tls: boolean;
+            tls_required: boolean;
+            transports?: string[];
+            type: string;
+            udp: boolean;
+            udp_over_tcp: boolean;
+            udp_over_tcp_required?: boolean;
+            udp_over_tcp_version?: number;
+            udp_relay: boolean;
+        };
+        Reality: {
+            allow_legacy_clients?: boolean;
+            max_time_difference?: number;
+            private_key_ref: string;
+            server_names: string[];
+            short_ids: string[];
+            target: string;
+        };
+        ReauthRequest: {
+            password: string;
+        };
+        Reference: {
+            logical_id: string;
+            revision: string;
+        };
+        Revision: {
+            certificate_assets: components["schemas"]["AssetBindings"];
+            config: components["schemas"]["NodeConfig"];
+            /** Format: date-time */
+            created_at: string;
+            credential_assets: components["schemas"]["AssetBindings"];
+            id: string;
+            parent_id?: string;
+        };
+        RuntimeStatus: {
+            applying: boolean;
+            boot_id: string;
+            closed: boolean;
+            degraded: boolean;
+            last_apply_error?: string;
+            last_apply_outcome?: string;
+            listeners: components["schemas"]["ListenerStatus"][];
+            recovery_required: boolean;
+            retained_instances: components["schemas"]["ListenerStatus"][];
+            revision: number;
+            runtime_epoch: number;
+        };
+        SSRUser: {
+            credential_ref: string;
+            id: number;
+        };
+        Session: {
+            account: components["schemas"]["Account"];
+            csrf_token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        SetupRequest: {
+            password: string;
+            token: string;
+            username: string;
+        };
+        Status: {
+            active_operation_id?: string;
+            applying: boolean;
+            block_reason?: string;
+            heads: components["schemas"]["Heads"];
+            heads_known: boolean;
+            mode: string;
+            provisional: boolean;
+            restore_error?: string;
+            runtime: components["schemas"]["RuntimeStatus"];
+            runtime_revision: string;
+            writes_blocked: boolean;
+        };
+        TUICUser: {
+            credential_ref: string;
+            /** Format: uuid */
+            uuid: string;
+        };
+        Template: {
+            content: string;
+            /** @constant */
+            format: "yaml";
+            revision: string;
+        };
+        Transport: {
+            host?: string;
+            path?: string;
+            /** @description Built-in plugin options. Passwords use password_ref/key_ref; inline secrets are rejected. See compiled capabilities and config/validate. */
+            plugin?: {
+                [key: string]: unknown;
+            };
+            reality?: components["schemas"]["Reality"];
+            /** @enum {string} */
+            type?: "native" | "tcp" | "ws" | "httpupgrade" | "quic" | "http" | "reality" | "xhttp" | "obfs" | "v2ray-plugin" | "gost-plugin" | "shadow-tls" | "restls" | "kcptun";
+            xhttp?: components["schemas"]["XHTTP"];
+        };
+        TransportCapability: {
+            secure: boolean;
+            tcp: boolean;
+            tls: boolean;
+            type: string;
+            udp: boolean;
+            udp_streams?: boolean;
+        };
+        Version: {
+            api_schema: string;
+            commit: string;
+            frontend_build: string;
+            version: string;
+        };
+        XHTTP: {
+            /** @description Known XHTTP options are checked by the compiled transport factory. */
+            extra?: {
+                [key: string]: unknown;
+            } | null;
+            /** @enum {string} */
+            http_version?: "h1" | "h2" | "h3";
+            /** @enum {string} */
+            mode?: "auto" | "packet-up" | "stream-up" | "stream-one";
+        };
+    };
     responses: never;
-    parameters: never;
+    parameters: {
+        CSRF: string;
+        Cursor: string;
+        Idempotency: string;
+        /** @description One strong revision ETag, including quotes. */
+        IfMatch: string;
+        Limit: number;
+        /** @description Must exactly match the configured management origin. */
+        Origin: string;
+        ResourceID: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    login: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description HttpOnly; SameSite=Strict; Path=/; Secure and __Host- prefix on HTTPS. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Session"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description HttpOnly; SameSite=Strict; Path=/; Secure and __Host- prefix on HTTPS. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: null;
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description HttpOnly; SameSite=Strict; Path=/; Secure and __Host- prefix on HTTPS. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: null;
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    reauthenticate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReauthRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: {
+                            /** Format: date-time */
+                            reauth_until: string;
+                        };
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Session"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCapabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Capabilities"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listCertificates: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: {
+                            items: components["schemas"]["CertificateAsset"][];
+                            next_cursor: string;
+                        };
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createCertificate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CertificateCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["CertificateAsset"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteCertificate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path: {
+                id: components["parameters"]["ResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: null;
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    applyConfiguration: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["ApplyAccepted"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCommitted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Revision"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Revision"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+                /** @description One strong revision ETag, including quotes. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Revision"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    draftFromRevision: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+                /** @description One strong revision ETag, including quotes. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    revision: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Revision"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    importConfiguration: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+                /** @description One strong revision ETag, including quotes. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Revision"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createApplicationPlan: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Plan"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listRevisions: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: {
+                            items: components["schemas"]["Revision"][];
+                            next_cursor: string;
+                        };
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getConfigurationTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Template"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    validateConfiguration: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: {
+                            document: components["schemas"]["DraftInput"];
+                            /** @constant */
+                            valid: true;
+                        };
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listCredentials: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: {
+                            items: components["schemas"]["CredentialAsset"][];
+                            next_cursor: string;
+                        };
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["CredentialAsset"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path: {
+                id: components["parameters"]["ResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: null;
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getConnectionInfo: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path: {
+                id: components["parameters"]["ResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConnectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["ConnectionInfo"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getLogs: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["LogPage"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Operation"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setupAdministrator: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Account"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: {
+                            needs_setup: boolean;
+                        };
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Status"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getSystemVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["Version"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
@@ -42,7 +2306,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Management service and storage are reachable; no proxy readiness implied. */
+            /** @description Management storage is reachable; proxy readiness is not implied. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -51,15 +2315,15 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         code: 0;
-                        msg: string;
                         data: {
                             /** @constant */
                             status: "ok";
                         };
+                        msg: string;
                     };
                 };
             };
-            /** @description Storage is unavailable. */
+            /** @description Storage unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -68,8 +2332,8 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         code: 50300;
-                        msg: string;
                         data: null;
+                        msg: string;
                     };
                 };
             };

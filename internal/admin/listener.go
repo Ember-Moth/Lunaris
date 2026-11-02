@@ -19,19 +19,27 @@ func TrackListener(listener net.Listener) *Listener {
 }
 
 func (l *Listener) Accept() (net.Conn, error) {
-	connection, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
+	for {
+		connection, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+		l.mu.Lock()
+		if l.closed {
+			l.mu.Unlock()
+			connection.Close()
+			return nil, net.ErrClosed
+		}
+		if len(l.connections) >= 128 {
+			l.mu.Unlock()
+			connection.Close()
+			continue
+		}
+		tracked := &trackedConn{Conn: connection, owner: l}
+		l.connections[tracked] = struct{}{}
+		l.mu.Unlock()
+		return tracked, nil
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.closed {
-		connection.Close()
-		return nil, net.ErrClosed
-	}
-	tracked := &trackedConn{Conn: connection, owner: l}
-	l.connections[tracked] = struct{}{}
-	return tracked, nil
 }
 
 func (l *Listener) Close() error {

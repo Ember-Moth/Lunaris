@@ -13,6 +13,7 @@ type ConfigRevision struct {
 type ApplyOperation struct {
 	ID             string `json:"id"`
 	RequestKey     string `json:"request_key"`
+	CallerDigest   string `json:"-"`
 	RequestDigest  string `json:"-"`
 	ExpectedBase   string `json:"expected_base,omitempty"`
 	TargetRevision string `json:"target_revision"`

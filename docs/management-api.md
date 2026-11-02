@@ -1,6 +1,6 @@
 # Web 管理 API 契约
 
-面向 React + shadcn/ui 管理界面的业务设计契约，由 Hertz 提供同源 HTTP API。具体状态语义见 [配置生命周期](configuration-lifecycle.md)，模块边界见 [总体架构](architecture.md)。`api/openapi.yaml` 当前只描述已经实现的健康检查；随着业务接入逐项补齐，作为 TypeScript 类型生成与契约校验的来源。下表不代表路由已经全部实现。
+面向 React + shadcn/ui 管理界面的业务设计契约，由 Hertz 提供同源 HTTP API。具体状态语义见 [配置生命周期](configuration-lifecycle.md)，模块边界见 [总体架构](architecture.md)。P5 已实现下述路由，`api/openapi.yaml` 是实际 DTO 与 TypeScript 生成类型的来源。资产引用映射、操作阶段和部署边界见[实现说明](management-implementation.md)。P6 浏览器交互仍待接入。
 
 ## 1. 通用约定
 
@@ -89,7 +89,7 @@
 | `GET /config/revisions?cursor=...&limit=...` | 有界历史列表；不暴露秘密资产 |
 | `POST /config/draft/from-revision` | 将历史版本复制为新草稿；要求 If-Match，不直接切换运行态 |
 
-`PUT /config/draft` 的协议字段使用带判别字段的 schema，并引用 CredentialAsset / CertificateAsset 的 ID。`enabled` 也属于版本化配置：点击启停保存草稿，经过同一计划和应用流程；没有另一条绕过 committed 状态的启停通道。
+`PUT /config/draft` 使用 `{config,credential_assets,certificate_assets}`；协议字段采用带判别字段的 schema，稳定逻辑名称通过两张映射引用不可变资产 ID。`enabled` 也属于版本化配置：点击启停保存草稿，经过同一计划和应用流程；没有另一条绕过 committed 状态的启停通道。
 
 各表所述的返回字段都放在信封 data 内，例如 `{code:0,msg:"ok",data:{operation_id:"op_example"}}`。请求体按端点定义，不额外套响应信封。
 

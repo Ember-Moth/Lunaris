@@ -17,11 +17,12 @@ import (
 )
 
 type scriptedFactory struct {
-	mu        sync.Mutex
-	counts    map[string]int
-	instances []*scriptedInstance
-	start     func(context.Context, model.ListenerSpec, int) error
-	stop      func(context.Context, model.ListenerSpec, int) error
+	mu         sync.Mutex
+	counts     map[string]int
+	instances  []*scriptedInstance
+	afterBuild func(model.ListenerSpec, int)
+	start      func(context.Context, model.ListenerSpec, int) error
+	stop       func(context.Context, model.ListenerSpec, int) error
 }
 
 type scriptedInstance struct {
@@ -38,13 +39,16 @@ func (*scriptedFactory) Capabilities() protocol.Capabilities {
 func (*scriptedFactory) Validate(model.ListenerSpec) []model.FieldError { return nil }
 func (f *scriptedFactory) Build(spec protocol.ResolvedListenerSpec, _ protocol.Dependencies) (transport.Binding, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	if f.counts == nil {
 		f.counts = make(map[string]int)
 	}
 	f.counts[spec.Spec.ID]++
 	instance := &scriptedInstance{factory: f, spec: spec.Spec, number: f.counts[spec.Spec.ID], events: make(chan protocol.InstanceEvent, 8)}
 	f.instances = append(f.instances, instance)
+	f.mu.Unlock()
+	if f.afterBuild != nil {
+		f.afterBuild(instance.spec, instance.number)
+	}
 	return transport.Binding{}, nil
 }
 func (f *scriptedFactory) last(id string) *scriptedInstance {
@@ -302,4 +306,114 @@ func (t scriptedTransport) Build(r transport.ResolvedSpec, _ transport.Binding) 
 		return nil, errors.New("scripted transport construction mismatch")
 	}
 	return i, nil
+}
+
+func TestExpectedEpochRejectsPreviewAfterRuntimeChanges(t *testing.T) {
+	factory := &scriptedFactory{}
+	runtime := startFake(t, factory)
+	plan, err := runtime.Plan(fakeConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.mu.Lock()
+	runtime.epoch++
+	runtime.mu.Unlock()
+	result, err := runtime.ApplyExpected(context.Background(), fakeConfig(), &plan.RuntimeEpoch)
+	if !errors.Is(err, ErrStalePlan) || result.Outcome != "rejected" {
+		t.Fatal(result, err)
+	}
+	for _, instance := range factory.instances {
+		if instance.closed.Load() {
+			t.Fatal("stale plan closed a live instance")
+		}
+	}
+}
+
+func TestStalePreviewDuringBuildRetainsFailedCandidateCleanup(t *testing.T) {
+	for _, failCleanup := range []bool{false, true} {
+		name := "released"
+		if failCleanup {
+			name = "retained"
+		}
+		t.Run(name, func(t *testing.T) {
+			entered, release := make(chan struct{}), make(chan struct{})
+			var releaseOnce sync.Once
+			var allowStop atomic.Bool
+			factory := &scriptedFactory{
+				afterBuild: func(spec model.ListenerSpec, n int) {
+					if spec.ID == "a" && n == 2 {
+						close(entered)
+						<-release
+					}
+				},
+				stop: func(_ context.Context, spec model.ListenerSpec, n int) error {
+					if failCleanup && spec.ID == "a" && n == 2 && !allowStop.Load() {
+						return errors.New("candidate resources remain owned")
+					}
+					return nil
+				},
+			}
+			runtime := startFake(t, factory)
+			t.Cleanup(func() {
+				allowStop.Store(true)
+				releaseOnce.Do(func() { close(release) })
+			})
+			oldA := factory.last("a")
+			beforeA := listenerStatus(t, runtime, "a")
+			changed := fakeConfig()
+			changed.Config.Listeners[0].Options = json.RawMessage(`{"version":2}`)
+			plan, err := runtime.Plan(changed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			type response struct {
+				result ApplyResult
+				err    error
+			}
+			done := make(chan response, 1)
+			go func() {
+				result, err := runtime.ApplyExpected(context.Background(), changed, &plan.RuntimeEpoch)
+				done <- response{result, err}
+			}()
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("candidate build did not begin")
+			}
+			factory.last("b").events <- protocol.InstanceEvent{State: "failed", Err: errors.New("listener failed during preparation")}
+			select {
+			case <-runtime.Errors():
+			case <-time.After(time.Second):
+				t.Fatal("runtime did not observe baseline failure")
+			}
+			releaseOnce.Do(func() { close(release) })
+			var applied response
+			select {
+			case applied = <-done:
+			case <-time.After(time.Second):
+				t.Fatal("stale apply did not finish")
+			}
+			outcome := "rejected"
+			if failCleanup {
+				outcome = "degraded"
+			}
+			if !errors.Is(applied.err, ErrStalePlan) || applied.result.Outcome != outcome {
+				t.Fatalf("incorrect stale apply result: %+v %v", applied.result, applied.err)
+			}
+			status := runtime.Snapshot()
+			if oldA.closed.Load() || status.Revision != 1 || listenerStatus(t, runtime, "a").Generation != beforeA.Generation {
+				t.Fatal("stale preview replaced the healthy baseline")
+			}
+			if status.RecoveryRequired != failCleanup || (len(status.RetainedInstances) > 0) != failCleanup {
+				t.Fatalf("candidate ownership was lost: %+v", status)
+			}
+			if failCleanup {
+				if _, err := runtime.Apply(context.Background(), changed); !errors.Is(err, ErrRecoveryRequired) {
+					t.Fatalf("replacement admitted over retained candidate: %v", err)
+				}
+			} else if !factory.last("a").closed.Load() {
+				t.Fatal("rejected candidate was not released")
+			}
+		})
+	}
 }

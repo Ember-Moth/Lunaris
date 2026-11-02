@@ -1,3 +1,8 @@
 data_dir: ./data
 admin:
   listen: 127.0.0.1:9080
+
+# P5: default loopback HTTP uses http://127.0.0.1:9080 as its allowed origin.
+# For native HTTPS, set admin.public_url and admin.tls.certificate_file/private_key_file.
+# For an HTTPS reverse proxy, set admin.public_url and explicit admin.trusted_proxies.
+# See docs/management-implementation.md. Never place administrator passwords here.

@@ -8,7 +8,7 @@
 
 当前实施顺序以 [开发计划](development-plan.md) 为准：先完成可独立运行的节点核心，HTTP API 与 Web 后置。直接引用上游模块，不维护本地 vendor 或本地模块替换。
 
-P2 文件模式已提供差异重载、凭据轮换、失败补偿和脱敏状态，见 [运行重载](runtime-reload.md)。P3 已通过本机应用服务和 CLI 提供 SQLite 版本提交与重启恢复，见 [持久化配置服务](persistent-configuration.md)；Web 交互、管理员身份和 TLS 证书资产仍在后续阶段实现。
+P2 文件模式已提供差异重载、凭据轮换、失败补偿和脱敏状态，见 [运行重载](runtime-reload.md)。P3 已通过本机应用服务和 CLI 提供 SQLite 版本提交与重启恢复，见 [持久化配置服务](persistent-configuration.md)；证书资产已在 P4 接入；P5 已提供管理员身份与管理 API，Web 交互留待 P6。详见[管理 API 实现](management-implementation.md)。
 
 ## 1. 产品边界与技术选择
 
@@ -299,7 +299,7 @@ UDP：保留数据报边界与每包目标地址，建立有界映射，处理�
 
 服务账户运行，低端口按需授予绑定能力。前台模式便于诊断；systemd 管理重启与日志。CLI 规划包括 `serve`、`doctor`、`backup`、`restore`、`admin reset-password`，恢复或直接写数据库的命令要求服务停止并取得数据目录锁。
 
-完整备份与还原走离线 CLI；当前包含 SQLite 中的配置、凭据资产、幂等操作及迁移状态，管理员与证书数据在相应阶段接入后纳入。bootstrap、外部文件和服务单元需另行保管。P3 使用 SQLite `VACUUM INTO` 生成含 WAL 内容的一致快照，不直接复制数据库主文件。[SQLite 备份文档](https://sqlite.org/backup.html)。Web 的脱敏导出仍是后续模板功能，不宣称能完整恢复秘密材料。
+完整备份与还原走离线 CLI；当前包含 SQLite 中的配置、凭据资产、幂等操作及迁移状态，已纳入管理员账户、会话与证书数据；还原时撤销复制的会话。bootstrap、外部文件和服务单元需另行保管。P3 使用 SQLite `VACUUM INTO` 生成含 WAL 内容的一致快照，不直接复制数据库主文件。[SQLite 备份文档](https://sqlite.org/backup.html)。P5 的脱敏模板导出不包含秘密材料，不能替代完整备份。
 
 数据库迁移在代理启动前执行，先做一致备份并校验 schema；不兼容时明确失败，禁止自动创建空库掩盖损坏。配置有效但某个代理端口恢复失败时，保留已认证管理入口和其他成功实例。数据库打不开或认证数据不可用时，不打开免认证修复接口，使用本机 CLI 恢复。
 

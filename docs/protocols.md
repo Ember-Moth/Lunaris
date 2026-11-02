@@ -1,6 +1,6 @@
 # 协议、传输与证书
 
-状态：2026-11-01，已接入十一类节点协议，Shadowsocks 同时支持 classic AEAD 与 2022。所有协议共用 sing 转发与运行管理；直接依赖上游 Go modules，不使用 sing-box 模块、本地 vendor 或本地 replace。HTTP 管理 API 和 Web 仍后置。
+状态：2026-11-01，已接入十一类节点协议，Shadowsocks 同时支持 classic AEAD 与 2022。所有协议共用 sing 转发与运行管理；直接依赖上游 Go modules，不使用 sing-box 模块、本地 vendor 或本地 replace。P5 HTTP 管理 API 已接入，Web 表单留待 P6。
 
 ## 支持矩阵
 

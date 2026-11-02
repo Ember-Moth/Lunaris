@@ -206,5 +206,69 @@ func Restore(ctx context.Context, dataDir, source string) error {
 	if err := validateDatabase(ctx, db); err != nil {
 		return fmt.Errorf("invalid backup: %w", err)
 	}
-	return snapshotDatabase(ctx, db, filepath.Join(dir, "lunaris.db"))
+	staging, err := os.MkdirTemp(dir, ".restore-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	staged := filepath.Join(staging, "lunaris.db")
+	if err := snapshotDatabase(ctx, db, staged); err != nil {
+		return err
+	}
+	// A restored backup must not resurrect old browser sessions or setup tokens.
+	dsn := url.URL{Scheme: "file", Path: filepath.ToSlash(staged)}
+	q := dsn.Query()
+	q.Set("mode", "rw")
+	q.Add("_pragma", "trusted_schema(OFF)")
+	q.Add("_pragma", "synchronous(FULL)")
+	dsn.RawQuery = q.Encode()
+	restored, err := sql.Open("sqlite", dsn.String())
+	if err != nil {
+		return err
+	}
+	restored.SetMaxOpenConns(1)
+	var exists int
+	err = restored.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='admin_sessions'").Scan(&exists)
+	if err == nil && exists > 0 {
+		var tx *sql.Tx
+		tx, err = restored.BeginTx(ctx, nil)
+		if err == nil {
+			if _, err = tx.ExecContext(ctx, "DELETE FROM admin_sessions"); err == nil {
+				_, err = tx.ExecContext(ctx, "UPDATE installation SET setup_token_hash='',setup_expires=0 WHERE id=1")
+			}
+			if err == nil {
+				err = tx.Commit()
+			} else {
+				tx.Rollback()
+			}
+		}
+	}
+	closeErr := restored.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	file, err := os.OpenFile(staged, os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	err = file.Sync()
+	file.Close()
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := os.Link(staged, filepath.Join(dir, "lunaris.db")); err != nil {
+		return err
+	}
+	parent, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	return parent.Sync()
 }

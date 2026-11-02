@@ -11,13 +11,13 @@ import (
 	ports "github.com/Ember-Moth/Lunaris/internal/store"
 )
 
-const operationColumns = "id,request_key,request_digest,expected_base,target_revision,base_revision,status,phase,error_message,created_at,updated_at"
+const operationColumns = "id,request_key,request_digest,expected_base,target_revision,base_revision,status,phase,error_message,created_at,updated_at,caller_digest"
 
 type scanner interface{ Scan(...any) error }
 
 func scanOperation(row scanner) (model.ApplyOperation, error) {
 	var o model.ApplyOperation
-	err := row.Scan(&o.ID, &o.RequestKey, &o.RequestDigest, &o.ExpectedBase, &o.TargetRevision, &o.BaseRevision, &o.Status, &o.Phase, &o.Error, &o.CreatedAt, &o.UpdatedAt)
+	err := row.Scan(&o.ID, &o.RequestKey, &o.RequestDigest, &o.ExpectedBase, &o.TargetRevision, &o.BaseRevision, &o.Status, &o.Phase, &o.Error, &o.CreatedAt, &o.UpdatedAt, &o.CallerDigest)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = ports.ErrNotFound
 	}
@@ -28,11 +28,17 @@ func (s *Store) Operation(ctx context.Context, key string) (model.ApplyOperation
 	return scanOperation(s.db.QueryRowContext(ctx, "SELECT "+operationColumns+" FROM apply_operations WHERE request_key=?", key))
 }
 
-func (s *Store) operationID(ctx context.Context, id string) (model.ApplyOperation, error) {
+func (s *Store) OperationID(ctx context.Context, id string) (model.ApplyOperation, error) {
 	return scanOperation(s.db.QueryRowContext(ctx, "SELECT "+operationColumns+" FROM apply_operations WHERE id=?", id))
 }
 
 func (s *Store) BeginApply(ctx context.Context, key, target, expectedBase string) (model.ApplyOperation, bool, error) {
+	return s.beginApply(ctx, key, target, expectedBase, "")
+}
+func (s *Store) BeginManagedApply(ctx context.Context, key, target, expectedBase, digest string) (model.ApplyOperation, bool, error) {
+	return s.beginApply(ctx, key, target, expectedBase, digest)
+}
+func (s *Store) beginApply(ctx context.Context, key, target, expectedBase, callerDigest string) (model.ApplyOperation, bool, error) {
 	if len(key) == 0 || len(key) > 128 || target == "" {
 		return model.ApplyOperation{}, false, errors.New("request key (1-128 bytes) and target revision are required")
 	}
@@ -44,7 +50,7 @@ func (s *Store) BeginApply(ctx context.Context, key, target, expectedBase string
 	digest := ports.RequestDigest(target, expectedBase)
 	prior, err := scanOperation(tx.QueryRowContext(ctx, "SELECT "+operationColumns+" FROM apply_operations WHERE request_key=?", key))
 	if err == nil {
-		if prior.RequestDigest != digest {
+		if prior.RequestDigest != digest || prior.CallerDigest != callerDigest {
 			return prior, true, ports.ErrIdempotencyConflict
 		}
 		return prior, true, nil
@@ -63,8 +69,8 @@ func (s *Store) BeginApply(ctx context.Context, key, target, expectedBase string
 		return model.ApplyOperation{}, false, ports.ErrConflict
 	}
 	id := "op_" + rand.Text()
-	_, err = tx.ExecContext(ctx, `INSERT INTO apply_operations(id,request_key,request_digest,expected_base,target_revision,base_revision,status,phase)
-		VALUES(?,?,?,?,?,?,'running','accepted')`, id, key, digest, expectedBase, target, current.CommittedRevision)
+	_, err = tx.ExecContext(ctx, `INSERT INTO apply_operations(id,request_key,request_digest,expected_base,target_revision,base_revision,status,phase,caller_digest)
+		VALUES(?,?,?,?,?,?,'running','accepted',?)`, id, key, digest, expectedBase, target, current.CommittedRevision, callerDigest)
 	if err != nil {
 		return model.ApplyOperation{}, false, err
 	}

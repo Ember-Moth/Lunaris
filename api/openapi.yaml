@@ -1,53 +1,3235 @@
-openapi: 3.1.0
-info:
-  title: Lunaris bootstrap API
-  version: 0.0.0
-  description: >-
-    Implemented scaffold endpoints only. Authenticated management APIs are
-    specified in docs/management-api.md and are not available yet.
-  license:
-    name: GNU General Public License v3.0
-    identifier: GPL-3.0-only
-paths:
-  /healthz:
-    get:
-      operationId: getHealth
-      summary: Check the local management service and storage
-      responses:
-        '200':
-          description: Management service and storage are reachable; no proxy readiness implied.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [code, msg, data]
-                properties:
-                  code:
-                    type: integer
-                    const: 0
-                  msg:
+components:
+    parameters:
+        CSRF:
+            in: header
+            name: X-CSRF-Token
+            required: true
+            schema:
+                maxLength: 43
+                minLength: 43
+                type: string
+        Cursor:
+            in: query
+            name: cursor
+            schema:
+                maxLength: 256
+                type: string
+        Idempotency:
+            in: header
+            name: Idempotency-Key
+            required: true
+            schema:
+                maxLength: 128
+                minLength: 1
+                type: string
+        IfMatch:
+            description: One strong revision ETag, including quotes.
+            in: header
+            name: If-Match
+            required: true
+            schema:
+                maxLength: 130
+                type: string
+        Limit:
+            in: query
+            name: limit
+            schema:
+                default: 50
+                maximum: 100
+                minimum: 1
+                type: integer
+        Origin:
+            description: Must exactly match the configured management origin.
+            in: header
+            name: Origin
+            required: true
+            schema:
+                maxLength: 512
+                type: string
+        ResourceID:
+            in: path
+            name: id
+            required: true
+            schema:
+                maxLength: 128
+                minLength: 1
+                type: string
+    schemas:
+        Account:
+            additionalProperties: false
+            properties:
+                id:
+                    maxLength: 128
+                    minLength: 1
                     type: string
-                  data:
-                    type: object
-                    required: [status]
-                    properties:
-                      status:
+                username:
+                    maxLength: 64
+                    type: string
+            required:
+                - id
+                - username
+            type: object
+        ApplyAccepted:
+            additionalProperties: false
+            properties:
+                operation:
+                    $ref: '#/components/schemas/Operation'
+                operation_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+            required:
+                - operation_id
+                - operation
+            type: object
+        ApplyRequest:
+            additionalProperties: false
+            properties:
+                acknowledge_disconnects:
+                    type: boolean
+                plan_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+            required:
+                - plan_id
+            type: object
+        AssetBindings:
+            additionalProperties:
+                maxLength: 128
+                minLength: 1
+                type: string
+            description: Stable logical aliases to immutable asset IDs. No raw secrets or server file/environment paths.
+            propertyNames:
+                maxLength: 128
+                minLength: 1
+            type: object
+        Capabilities:
+            additionalProperties: false
+            properties:
+                connection_info_format:
+                    const: parameters-v1
+                    type: string
+                credential_kinds:
+                    items:
+                        maxLength: 64
                         type: string
-                        const: ok
-        '503':
-          description: Storage is unavailable.
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: false
-                required: [code, msg, data]
-                properties:
-                  code:
+                    type: array
+                protocols:
+                    items:
+                        $ref: '#/components/schemas/ProtocolCapability'
+                    type: array
+                schema_version:
+                    const: 1
                     type: integer
-                    const: 50300
-                  msg:
+                shadowsocks_methods:
+                    items:
+                        maxLength: 64
+                        type: string
+                    type: array
+                snell_versions:
+                    items:
+                        minimum: 0
+                        type: integer
+                    type: array
+                transports:
+                    items:
+                        $ref: '#/components/schemas/TransportCapability'
+                    type: array
+                vless_flows:
+                    items:
+                        maxLength: 64
+                        type: string
+                    type: array
+            required:
+                - schema_version
+                - protocols
+                - transports
+                - shadowsocks_methods
+                - vless_flows
+                - snell_versions
+                - credential_kinds
+                - connection_info_format
+            type: object
+        CertificateAsset:
+            additionalProperties: false
+            properties:
+                created_at:
+                    format: date-time
                     type: string
-                  data:
-                    type: 'null'
+                dns_names:
+                    items:
+                        maxLength: 253
+                        type: string
+                    type:
+                        - array
+                        - "null"
+                fingerprint:
+                    maxLength: 64
+                    type: string
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                label:
+                    maxLength: 256
+                    type: string
+                not_after:
+                    format: date-time
+                    type: string
+                not_before:
+                    format: date-time
+                    type: string
+                reference_count:
+                    minimum: 0
+                    type: integer
+                references:
+                    items:
+                        $ref: '#/components/schemas/Reference'
+                    maxItems: 100
+                    type: array
+                references_truncated:
+                    type: boolean
+                subject:
+                    maxLength: 4096
+                    type: string
+            required:
+                - id
+                - label
+                - created_at
+                - references
+                - reference_count
+                - references_truncated
+                - subject
+                - dns_names
+                - fingerprint
+                - not_before
+                - not_after
+            type: object
+        CertificateCreate:
+            additionalProperties: false
+            properties:
+                certificate:
+                    maxLength: 1.048576e+06
+                    minLength: 1
+                    type: string
+                label:
+                    maxLength: 256
+                    type: string
+                private_key:
+                    maxLength: 1.048576e+06
+                    minLength: 1
+                    type: string
+            required:
+                - certificate
+                - private_key
+            type: object
+        Change:
+            additionalProperties: false
+            properties:
+                action:
+                    enum:
+                        - unchanged
+                        - create
+                        - replace
+                        - disable
+                        - remove
+                        - recover
+                    type: string
+                closes_connections:
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+            required:
+                - id
+                - action
+                - closes_connections
+            type: object
+        ConnectionInfo:
+            additionalProperties: false
+            description: Client-neutral connection parameters, not an importable client profile. Contains only the selected user secret and required shared plugin keys; TLS private keys, REALITY private keys and VLESS server decryption keys are never returned.
+            properties:
+                authentication:
+                    additionalProperties: true
+                    type: object
+                committed_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                endpoint:
+                    additionalProperties: false
+                    properties:
+                        host:
+                            maxLength: 253
+                            type: string
+                        port:
+                            maximum: 65535
+                            minimum: 1
+                            type: integer
+                    required:
+                        - host
+                        - port
+                    type: object
+                format:
+                    const: parameters-v1
+                    type: string
+                listen_network:
+                    items:
+                        maxLength: 8
+                        type: string
+                    type: array
+                listener_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                protocol:
+                    maxLength: 64
+                    type: string
+                protocol_options:
+                    additionalProperties: true
+                    type: object
+                spec_digest:
+                    maxLength: 64
+                    type: string
+                transport:
+                    additionalProperties: true
+                    type: object
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - format
+                - committed_revision
+                - listener_id
+                - spec_digest
+                - protocol
+                - listen_network
+                - endpoint
+                - authentication
+                - protocol_options
+                - transport
+                - udp_over_tcp
+                - multiplex
+            type: object
+        ConnectionRequest:
+            additionalProperties: false
+            properties:
+                committed_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                host:
+                    maxLength: 253
+                    minLength: 1
+                    type: string
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                server_name:
+                    maxLength: 253
+                    type: string
+            required:
+                - committed_revision
+                - host
+            type: object
+        CredentialAsset:
+            additionalProperties: false
+            properties:
+                created_at:
+                    format: date-time
+                    type: string
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                kind:
+                    maxLength: 64
+                    type: string
+                label:
+                    maxLength: 256
+                    type: string
+                reference_count:
+                    minimum: 0
+                    type: integer
+                references:
+                    items:
+                        $ref: '#/components/schemas/Reference'
+                    maxItems: 100
+                    type: array
+                references_truncated:
+                    type: boolean
+            required:
+                - id
+                - label
+                - created_at
+                - references
+                - reference_count
+                - references_truncated
+                - kind
+            type: object
+        CredentialCreate:
+            additionalProperties: false
+            description: Exactly one of secret or generate=true. Secret material is never returned by this endpoint.
+            properties:
+                generate:
+                    type: boolean
+                kind:
+                    default: generic
+                    enum:
+                        - generic
+                        - password
+                        - uuid
+                        - ss2022-128
+                        - ss2022-256
+                        - x25519
+                        - vless-encryption
+                    type: string
+                label:
+                    maxLength: 256
+                    type: string
+                secret:
+                    maxLength: 4096
+                    minLength: 1
+                    type: string
+            type: object
+        DraftInput:
+            additionalProperties: false
+            properties:
+                certificate_assets:
+                    $ref: '#/components/schemas/AssetBindings'
+                config:
+                    $ref: '#/components/schemas/NodeConfig'
+                credential_assets:
+                    $ref: '#/components/schemas/AssetBindings'
+            required:
+                - config
+            type: object
+        Error:
+            additionalProperties: false
+            properties:
+                code:
+                    minimum: 1
+                    type: integer
+                data:
+                    additionalProperties: true
+                    type:
+                        - object
+                        - "null"
+                msg:
+                    maxLength: 2048
+                    type: string
+            required:
+                - code
+                - msg
+                - data
+            type: object
+        FieldError:
+            additionalProperties: false
+            properties:
+                code:
+                    maxLength: 256
+                    type: string
+                message:
+                    maxLength: 1024
+                    type: string
+                path:
+                    maxLength: 256
+                    type: string
+            required:
+                - path
+                - code
+                - message
+            type: object
+        Heads:
+            additionalProperties: false
+            properties:
+                committed_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                draft_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+            required:
+                - draft_revision
+                - committed_revision
+            type: object
+        ImportRequest:
+            additionalProperties: false
+            properties:
+                certificate_assets:
+                    $ref: '#/components/schemas/AssetBindings'
+                content:
+                    maxLength: 1.048576e+06
+                    type: string
+                credential_assets:
+                    $ref: '#/components/schemas/AssetBindings'
+            required:
+                - content
+            type: object
+        Limits:
+            additionalProperties: false
+            properties:
+                dial_timeout:
+                    description: Nanoseconds. Defaults are applied when omitted.
+                    format: int64
+                    maximum: 8.64e+13
+                    minimum: 1
+                    type: integer
+                handshake_timeout:
+                    description: Nanoseconds. Defaults are applied when omitted.
+                    format: int64
+                    maximum: 8.64e+13
+                    minimum: 1
+                    type: integer
+                max_connections:
+                    maximum: 65536
+                    minimum: 1
+                    type: integer
+                max_pending_handshakes:
+                    maximum: 65536
+                    minimum: 1
+                    type: integer
+                max_udp_destinations:
+                    maximum: 65536
+                    minimum: 1
+                    type: integer
+                max_udp_sessions:
+                    maximum: 65536
+                    minimum: 1
+                    type: integer
+                shutdown_timeout:
+                    description: Nanoseconds. Defaults are applied when omitted.
+                    format: int64
+                    maximum: 8.64e+13
+                    minimum: 1
+                    type: integer
+                udp_idle_timeout:
+                    description: Nanoseconds. Defaults are applied when omitted.
+                    format: int64
+                    maximum: 8.64e+13
+                    minimum: 1
+                    type: integer
+                udp_queue_size:
+                    maximum: 1024
+                    minimum: 1
+                    type: integer
+            type: object
+        Listener:
+            discriminator:
+                mapping:
+                    anytls: '#/components/schemas/Listener_anytls'
+                    hysteria2: '#/components/schemas/Listener_hysteria2'
+                    mieru: '#/components/schemas/Listener_mieru'
+                    naive: '#/components/schemas/Listener_naive'
+                    shadowsocks: '#/components/schemas/Listener_shadowsocks'
+                    shadowsocksr: '#/components/schemas/Listener_shadowsocksr'
+                    snell: '#/components/schemas/Listener_snell'
+                    trojan: '#/components/schemas/Listener_trojan'
+                    tuic: '#/components/schemas/Listener_tuic'
+                    vless: '#/components/schemas/Listener_vless'
+                    vmess: '#/components/schemas/Listener_vmess'
+                propertyName: protocol
+            oneOf:
+                - $ref: '#/components/schemas/Listener_shadowsocks'
+                - $ref: '#/components/schemas/Listener_vless'
+                - $ref: '#/components/schemas/Listener_vmess'
+                - $ref: '#/components/schemas/Listener_trojan'
+                - $ref: '#/components/schemas/Listener_anytls'
+                - $ref: '#/components/schemas/Listener_hysteria2'
+                - $ref: '#/components/schemas/Listener_tuic'
+                - $ref: '#/components/schemas/Listener_naive'
+                - $ref: '#/components/schemas/Listener_snell'
+                - $ref: '#/components/schemas/Listener_mieru'
+                - $ref: '#/components/schemas/Listener_shadowsocksr'
+        Listener_anytls:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    anyOf:
+                        - additionalProperties: false
+                          properties: {}
+                          type: object
+                        - type: "null"
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: anytls
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_hysteria2:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    anyOf:
+                        - additionalProperties: false
+                          properties: {}
+                          type: object
+                        - type: "null"
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: hysteria2
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_mieru:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    additionalProperties: false
+                    properties:
+                        mtu:
+                            anyOf:
+                                - maximum: 9000
+                                  minimum: 576
+                                  type: integer
+                                - const: 0
+                                  type: integer
+                        traffic_pattern:
+                            maxLength: 65536
+                            type: string
+                        user_hint_is_mandatory:
+                            type: boolean
+                        users:
+                            items:
+                                $ref: '#/components/schemas/NamedUser'
+                            maxItems: 4096
+                            type: array
+                    required:
+                        - users
+                    type: object
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: mieru
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_naive:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    additionalProperties: false
+                    properties:
+                        users:
+                            items:
+                                $ref: '#/components/schemas/NamedUser'
+                            maxItems: 4096
+                            type: array
+                    required:
+                        - users
+                    type: object
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: naive
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_shadowsocks:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    additionalProperties: false
+                    properties:
+                        method:
+                            enum:
+                                - aes-128-gcm
+                                - aes-256-gcm
+                                - chacha20-ietf-poly1305
+                                - 2022-blake3-aes-128-gcm
+                                - 2022-blake3-aes-256-gcm
+                                - 2022-blake3-chacha20-poly1305
+                            type: string
+                        server_key_ref:
+                            maxLength: 128
+                            minLength: 1
+                            type: string
+                    required:
+                        - method
+                    type: object
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: shadowsocks
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_shadowsocksr:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    additionalProperties: false
+                    properties:
+                        method:
+                            maxLength: 64
+                            type: string
+                        obfs:
+                            maxLength: 64
+                            type: string
+                        obfs_param:
+                            maxLength: 4096
+                            type: string
+                        protocol:
+                            maxLength: 64
+                            type: string
+                        protocol_param:
+                            maxLength: 4096
+                            type: string
+                        server_key_ref:
+                            maxLength: 128
+                            minLength: 1
+                            type: string
+                        users:
+                            items:
+                                $ref: '#/components/schemas/SSRUser'
+                            maxItems: 4096
+                            type: array
+                    required:
+                        - method
+                        - protocol
+                    type: object
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: shadowsocksr
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_snell:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    anyOf:
+                        - additionalProperties: false
+                          properties:
+                            mode:
+                                maxLength: 64
+                                type: string
+                            obfs:
+                                enum:
+                                    - ""
+                                    - none
+                                    - http
+                                    - tls
+                                type: string
+                            version:
+                                default: 5
+                                enum:
+                                    - 5
+                                    - 6
+                                type: integer
+                          type: object
+                        - type: "null"
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: snell
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_trojan:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    anyOf:
+                        - additionalProperties: false
+                          properties: {}
+                          type: object
+                        - type: "null"
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: trojan
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_tuic:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    additionalProperties: false
+                    properties:
+                        congestion_control:
+                            enum:
+                                - ""
+                                - cubic
+                                - new_reno
+                                - bbr
+                            type: string
+                        users:
+                            items:
+                                $ref: '#/components/schemas/TUICUser'
+                            maxItems: 4096
+                            type: array
+                    required:
+                        - users
+                    type: object
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: tuic
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_vless:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    anyOf:
+                        - additionalProperties: false
+                          properties:
+                            decryption_ref:
+                                maxLength: 128
+                                minLength: 1
+                                type: string
+                            flow:
+                                enum:
+                                    - ""
+                                    - xtls-rprx-vision
+                                type: string
+                          type: object
+                        - type: "null"
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: vless
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        Listener_vmess:
+            additionalProperties: false
+            properties:
+                address:
+                    default: 127.0.0.1
+                    maxLength: 253
+                    type: string
+                certificate_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                credential_refs:
+                    items:
+                        maxLength: 128
+                        minLength: 1
+                        type: string
+                    maxItems: 4096
+                    type: array
+                enabled:
+                    default: false
+                    type: boolean
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                multiplex:
+                    $ref: '#/components/schemas/Multiplex'
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        enum:
+                            - tcp
+                            - udp
+                        type: string
+                    maxItems: 2
+                    type: array
+                options:
+                    anyOf:
+                        - additionalProperties: false
+                          properties: {}
+                          type: object
+                        - type: "null"
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    const: vmess
+                    type: string
+                transport:
+                    $ref: '#/components/schemas/Transport'
+                udp_over_tcp:
+                    type: boolean
+            required:
+                - id
+                - protocol
+                - port
+                - options
+                - credential_refs
+            type: object
+        ListenerStatus:
+            additionalProperties: false
+            properties:
+                active_tcp:
+                    minimum: 0
+                    type: integer
+                active_udp:
+                    minimum: 0
+                    type: integer
+                address:
+                    maxLength: 253
+                    type: string
+                generation:
+                    minimum: 0
+                    type: integer
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                last_error:
+                    maxLength: 2048
+                    type: string
+                name:
+                    maxLength: 256
+                    type: string
+                network:
+                    items:
+                        maxLength: 8
+                        type: string
+                    type: array
+                port:
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                protocol:
+                    maxLength: 64
+                    type: string
+                provisional:
+                    type: boolean
+                spec_digest:
+                    maxLength: 64
+                    type: string
+                state:
+                    enum:
+                        - disabled
+                        - starting
+                        - running
+                        - stopping
+                        - stopped
+                        - failed
+                    type: string
+            required:
+                - id
+                - name
+                - protocol
+                - address
+                - port
+                - network
+                - generation
+                - spec_digest
+                - state
+                - provisional
+                - active_tcp
+                - active_udp
+            type: object
+        LogEntry:
+            additionalProperties: false
+            properties:
+                level:
+                    maxLength: 16
+                    type: string
+                message:
+                    maxLength: 2048
+                    type: string
+                operation_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                request_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                sequence:
+                    minimum: 0
+                    type: integer
+                time:
+                    format: date-time
+                    type: string
+            required:
+                - sequence
+                - time
+                - level
+                - message
+            type: object
+        LogPage:
+            additionalProperties: false
+            properties:
+                boot_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                entries:
+                    items:
+                        $ref: '#/components/schemas/LogEntry'
+                    maxItems: 100
+                    type: array
+                next_cursor:
+                    maxLength: 256
+                    type: string
+                restarted:
+                    type: boolean
+                truncated:
+                    type: boolean
+            required:
+                - boot_id
+                - entries
+                - next_cursor
+                - truncated
+                - restarted
+            type: object
+        LoginRequest:
+            additionalProperties: false
+            properties:
+                password:
+                    maxLength: 1024
+                    type: string
+                username:
+                    maxLength: 64
+                    type: string
+            required:
+                - username
+                - password
+            type: object
+        Multiplex:
+            additionalProperties: false
+            properties:
+                enabled:
+                    type: boolean
+                padding:
+                    type: boolean
+            type: object
+        NamedUser:
+            additionalProperties: false
+            properties:
+                credential_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                username:
+                    maxLength: 256
+                    minLength: 1
+                    type: string
+            required:
+                - username
+                - credential_ref
+            type: object
+        NodeConfig:
+            additionalProperties: false
+            properties:
+                limits:
+                    $ref: '#/components/schemas/Limits'
+                listeners:
+                    items:
+                        $ref: '#/components/schemas/Listener'
+                    maxItems: 1024
+                    type: array
+                schema_version:
+                    const: 1
+                    default: 1
+                    type: integer
+            required:
+                - listeners
+            type: object
+        Operation:
+            additionalProperties: false
+            properties:
+                base_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                created_at:
+                    format: date-time
+                    type: string
+                error:
+                    maxLength: 2048
+                    type: string
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                phase:
+                    enum:
+                        - accepted
+                        - applying
+                        - committing
+                        - finished
+                    type: string
+                status:
+                    enum:
+                        - running
+                        - succeeded
+                        - failed
+                        - failed_rolled_back
+                        - degraded
+                        - interrupted
+                        - uncertain
+                    type: string
+                target_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                updated_at:
+                    format: date-time
+                    type: string
+            required:
+                - id
+                - target_revision
+                - base_revision
+                - status
+                - phase
+                - created_at
+                - updated_at
+            type: object
+        PasswordRequest:
+            additionalProperties: false
+            properties:
+                current_password:
+                    maxLength: 1024
+                    type: string
+                new_password:
+                    maxLength: 1024
+                    minLength: 12
+                    type: string
+            required:
+                - current_password
+                - new_password
+            type: object
+        Plan:
+            additionalProperties: false
+            properties:
+                base_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                boot_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                changes:
+                    items:
+                        $ref: '#/components/schemas/Change'
+                    type: array
+                draft_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                expires_at:
+                    format: date-time
+                    type: string
+                plan_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                runtime_epoch:
+                    minimum: 0
+                    type: integer
+            required:
+                - plan_id
+                - draft_revision
+                - base_revision
+                - boot_id
+                - runtime_epoch
+                - expires_at
+                - changes
+            type: object
+        PlanRequest:
+            additionalProperties: false
+            properties:
+                base_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                draft_revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+            required:
+                - draft_revision
+                - base_revision
+            type: object
+        ProtocolCapability:
+            additionalProperties: false
+            properties:
+                multiplex:
+                    type: boolean
+                tcp:
+                    type: boolean
+                tcp_relay:
+                    type: boolean
+                tls:
+                    type: boolean
+                tls_required:
+                    type: boolean
+                transports:
+                    items:
+                        maxLength: 64
+                        type: string
+                    type: array
+                type:
+                    maxLength: 64
+                    type: string
+                udp:
+                    type: boolean
+                udp_over_tcp:
+                    type: boolean
+                udp_over_tcp_required:
+                    type: boolean
+                udp_over_tcp_version:
+                    maximum: 2
+                    minimum: 0
+                    type: integer
+                udp_relay:
+                    type: boolean
+            required:
+                - type
+                - tcp
+                - udp
+                - tcp_relay
+                - udp_relay
+                - tls
+                - tls_required
+                - udp_over_tcp
+                - multiplex
+            type: object
+        Reality:
+            additionalProperties: false
+            properties:
+                allow_legacy_clients:
+                    type: boolean
+                max_time_difference:
+                    maximum: 8.64e+13
+                    minimum: 0
+                    type: integer
+                private_key_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                server_names:
+                    items:
+                        maxLength: 253
+                        type: string
+                    maxItems: 8
+                    type: array
+                short_ids:
+                    items:
+                        maxLength: 16
+                        pattern: ^(?:[0-9a-fA-F]{2}){0,8}$
+                        type: string
+                    maxItems: 64
+                    type: array
+                target:
+                    maxLength: 256
+                    type: string
+            required:
+                - target
+                - server_names
+                - private_key_ref
+                - short_ids
+            type: object
+        ReauthRequest:
+            additionalProperties: false
+            properties:
+                password:
+                    maxLength: 1024
+                    type: string
+            required:
+                - password
+            type: object
+        Reference:
+            additionalProperties: false
+            properties:
+                logical_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+            required:
+                - revision
+                - logical_id
+            type: object
+        Revision:
+            additionalProperties: false
+            properties:
+                certificate_assets:
+                    $ref: '#/components/schemas/AssetBindings'
+                config:
+                    $ref: '#/components/schemas/NodeConfig'
+                created_at:
+                    format: date-time
+                    type: string
+                credential_assets:
+                    $ref: '#/components/schemas/AssetBindings'
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                parent_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+            required:
+                - id
+                - created_at
+                - config
+                - credential_assets
+                - certificate_assets
+            type: object
+        RuntimeStatus:
+            additionalProperties: false
+            properties:
+                applying:
+                    type: boolean
+                boot_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                closed:
+                    type: boolean
+                degraded:
+                    type: boolean
+                last_apply_error:
+                    maxLength: 2048
+                    type: string
+                last_apply_outcome:
+                    maxLength: 64
+                    type: string
+                listeners:
+                    items:
+                        $ref: '#/components/schemas/ListenerStatus'
+                    type: array
+                recovery_required:
+                    type: boolean
+                retained_instances:
+                    items:
+                        $ref: '#/components/schemas/ListenerStatus'
+                    type: array
+                revision:
+                    minimum: 0
+                    type: integer
+                runtime_epoch:
+                    minimum: 0
+                    type: integer
+            required:
+                - boot_id
+                - revision
+                - runtime_epoch
+                - applying
+                - closed
+                - degraded
+                - recovery_required
+                - listeners
+                - retained_instances
+            type: object
+        SSRUser:
+            additionalProperties: false
+            properties:
+                credential_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                id:
+                    maximum: 4.294967295e+09
+                    minimum: 1
+                    type: integer
+            required:
+                - id
+                - credential_ref
+            type: object
+        Session:
+            additionalProperties: false
+            properties:
+                account:
+                    $ref: '#/components/schemas/Account'
+                csrf_token:
+                    maxLength: 43
+                    minLength: 43
+                    type: string
+                expires_at:
+                    format: date-time
+                    type: string
+            required:
+                - account
+                - expires_at
+                - csrf_token
+            type: object
+        SetupRequest:
+            additionalProperties: false
+            properties:
+                password:
+                    maxLength: 1024
+                    minLength: 12
+                    type: string
+                token:
+                    maxLength: 43
+                    minLength: 43
+                    type: string
+                username:
+                    maxLength: 64
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9_.-]+$
+                    type: string
+            required:
+                - token
+                - username
+                - password
+            type: object
+        Status:
+            additionalProperties: false
+            properties:
+                active_operation_id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                applying:
+                    type: boolean
+                block_reason:
+                    maxLength: 2048
+                    type: string
+                heads:
+                    $ref: '#/components/schemas/Heads'
+                heads_known:
+                    type: boolean
+                mode:
+                    maxLength: 32
+                    type: string
+                provisional:
+                    type: boolean
+                restore_error:
+                    maxLength: 2048
+                    type: string
+                runtime:
+                    $ref: '#/components/schemas/RuntimeStatus'
+                runtime_revision:
+                    maxLength: 128
+                    type: string
+                writes_blocked:
+                    type: boolean
+            required:
+                - mode
+                - heads
+                - heads_known
+                - runtime_revision
+                - provisional
+                - writes_blocked
+                - applying
+                - runtime
+            type: object
+        TUICUser:
+            additionalProperties: false
+            properties:
+                credential_ref:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                uuid:
+                    format: uuid
+                    type: string
+            required:
+                - uuid
+                - credential_ref
+            type: object
+        Template:
+            additionalProperties: false
+            properties:
+                content:
+                    maxLength: 2.097152e+06
+                    type: string
+                format:
+                    const: yaml
+                    type: string
+                revision:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+            required:
+                - format
+                - content
+                - revision
+            type: object
+        Transport:
+            additionalProperties: false
+            properties:
+                host:
+                    maxLength: 253
+                    type: string
+                path:
+                    maxLength: 1024
+                    type: string
+                plugin:
+                    additionalProperties: true
+                    description: Built-in plugin options. Passwords use password_ref/key_ref; inline secrets are rejected. See compiled capabilities and config/validate.
+                    type: object
+                reality:
+                    $ref: '#/components/schemas/Reality'
+                type:
+                    enum:
+                        - native
+                        - tcp
+                        - ws
+                        - httpupgrade
+                        - quic
+                        - http
+                        - reality
+                        - xhttp
+                        - obfs
+                        - v2ray-plugin
+                        - gost-plugin
+                        - shadow-tls
+                        - restls
+                        - kcptun
+                    type: string
+                xhttp:
+                    $ref: '#/components/schemas/XHTTP'
+            type: object
+        TransportCapability:
+            additionalProperties: false
+            properties:
+                secure:
+                    type: boolean
+                tcp:
+                    type: boolean
+                tls:
+                    type: boolean
+                type:
+                    maxLength: 64
+                    type: string
+                udp:
+                    type: boolean
+                udp_streams:
+                    type: boolean
+            required:
+                - type
+                - tcp
+                - udp
+                - tls
+                - secure
+            type: object
+        Version:
+            additionalProperties: false
+            properties:
+                api_schema:
+                    maxLength: 128
+                    type: string
+                commit:
+                    maxLength: 128
+                    type: string
+                frontend_build:
+                    maxLength: 128
+                    type: string
+                version:
+                    maxLength: 128
+                    type: string
+            required:
+                - version
+                - commit
+                - api_schema
+                - frontend_build
+            type: object
+        XHTTP:
+            additionalProperties: false
+            properties:
+                extra:
+                    additionalProperties: true
+                    description: Known XHTTP options are checked by the compiled transport factory.
+                    type:
+                        - object
+                        - "null"
+                http_version:
+                    enum:
+                        - h1
+                        - h2
+                        - h3
+                    type: string
+                mode:
+                    enum:
+                        - auto
+                        - packet-up
+                        - stream-up
+                        - stream-one
+                    type: string
+            type: object
+    securitySchemes:
+        SecureSessionCookie:
+            in: cookie
+            name: __Host-lunaris_session
+            type: apiKey
+        SessionCookie:
+            in: cookie
+            name: lunaris_session
+            type: apiKey
+info:
+    description: Implemented P5 API. One administrator; immutable proxy assets; versioned drafts; durable asynchronous application. Session cookie names differ between loopback HTTP and HTTPS. All responses are no-store. Header/TLS parsing failures can be rejected at the HTTP transport boundary.
+    license:
+        identifier: GPL-3.0-only
+        name: GNU General Public License v3.0
+    title: Lunaris management API
+    version: 1.0.0
+openapi: 3.1.0
+paths:
+    /api/v1/auth/login:
+        post:
+            operationId: login
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/LoginRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Session'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                    headers:
+                        Set-Cookie:
+                            description: HttpOnly; SameSite=Strict; Path=/; Secure and __Host- prefix on HTTPS.
+                            schema:
+                                maxLength: 1024
+                                type: string
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            security: []
+            summary: login
+    /api/v1/auth/logout:
+        post:
+            operationId: logout
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        type: "null"
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                    headers:
+                        Set-Cookie:
+                            description: HttpOnly; SameSite=Strict; Path=/; Secure and __Host- prefix on HTTPS.
+                            schema:
+                                maxLength: 1024
+                                type: string
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: logout
+    /api/v1/auth/password:
+        put:
+            operationId: changePassword
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PasswordRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        type: "null"
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                    headers:
+                        Set-Cookie:
+                            description: HttpOnly; SameSite=Strict; Path=/; Secure and __Host- prefix on HTTPS.
+                            schema:
+                                maxLength: 1024
+                                type: string
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: changePassword
+    /api/v1/auth/reauth:
+        post:
+            operationId: reauthenticate
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ReauthRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        additionalProperties: false
+                                        properties:
+                                            reauth_until:
+                                                format: date-time
+                                                type: string
+                                        required:
+                                            - reauth_until
+                                        type: object
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: reauthenticate
+    /api/v1/auth/session:
+        get:
+            operationId: getSession
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Session'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getSession
+    /api/v1/capabilities:
+        get:
+            operationId: getCapabilities
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Capabilities'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getCapabilities
+    /api/v1/certificates:
+        get:
+            operationId: listCertificates
+            parameters:
+                - $ref: '#/components/parameters/Cursor'
+                - $ref: '#/components/parameters/Limit'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        additionalProperties: false
+                                        properties:
+                                            items:
+                                                items:
+                                                    $ref: '#/components/schemas/CertificateAsset'
+                                                maxItems: 100
+                                                type: array
+                                            next_cursor:
+                                                maxLength: 128
+                                                type: string
+                                        required:
+                                            - items
+                                            - next_cursor
+                                        type: object
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: listCertificates
+        post:
+            operationId: createCertificate
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CertificateCreate'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/CertificateAsset'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: createCertificate
+    /api/v1/certificates/{id}:
+        delete:
+            operationId: deleteCertificate
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+                - $ref: '#/components/parameters/ResourceID'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        type: "null"
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: deleteCertificate
+    /api/v1/config/apply:
+        post:
+            description: Persisted admission precedes 202. The accepted job survives HTTP disconnection and logout. Idempotency lookup precedes plan expiry and survives restart; the same key with changed input conflicts.
+            operationId: applyConfiguration
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+                - $ref: '#/components/parameters/Idempotency'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ApplyRequest'
+                required: true
+            responses:
+                "202":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/ApplyAccepted'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                    headers:
+                        Location:
+                            schema:
+                                maxLength: 256
+                                type: string
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: applyConfiguration
+    /api/v1/config/committed:
+        get:
+            operationId: getCommitted
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Revision'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                    headers:
+                        ETag:
+                            schema:
+                                maxLength: 130
+                                type: string
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getCommitted
+    /api/v1/config/draft:
+        get:
+            operationId: getDraft
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Revision'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                    headers:
+                        ETag:
+                            schema:
+                                maxLength: 130
+                                type: string
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getDraft
+        put:
+            operationId: saveDraft
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+                - $ref: '#/components/parameters/IfMatch'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DraftInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Revision'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                    headers:
+                        ETag:
+                            schema:
+                                maxLength: 130
+                                type: string
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: saveDraft
+    /api/v1/config/draft/from-revision:
+        post:
+            operationId: draftFromRevision
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+                - $ref: '#/components/parameters/IfMatch'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            additionalProperties: false
+                            properties:
+                                revision:
+                                    maxLength: 128
+                                    minLength: 1
+                                    type: string
+                            required:
+                                - revision
+                            type: object
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Revision'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                    headers:
+                        ETag:
+                            schema:
+                                maxLength: 130
+                                type: string
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: draftFromRevision
+    /api/v1/config/import:
+        post:
+            description: Imports the template shape into a draft, never applies it. YAML aliases and local file/environment reads are rejected.
+            operationId: importConfiguration
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+                - $ref: '#/components/parameters/IfMatch'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ImportRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Revision'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                    headers:
+                        ETag:
+                            schema:
+                                maxLength: 130
+                                type: string
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: importConfiguration
+    /api/v1/config/plans:
+        post:
+            operationId: createApplicationPlan
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/PlanRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Plan'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: createApplicationPlan
+    /api/v1/config/revisions:
+        get:
+            operationId: listRevisions
+            parameters:
+                - $ref: '#/components/parameters/Cursor'
+                - $ref: '#/components/parameters/Limit'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        additionalProperties: false
+                                        properties:
+                                            items:
+                                                items:
+                                                    $ref: '#/components/schemas/Revision'
+                                                maxItems: 100
+                                                type: array
+                                            next_cursor:
+                                                maxLength: 128
+                                                type: string
+                                        required:
+                                            - items
+                                            - next_cursor
+                                        type: object
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: listRevisions
+    /api/v1/config/template:
+        get:
+            operationId: getConfigurationTemplate
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Template'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getConfigurationTemplate
+    /api/v1/config/validate:
+        post:
+            operationId: validateConfiguration
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/DraftInput'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        additionalProperties: false
+                                        properties:
+                                            document:
+                                                $ref: '#/components/schemas/DraftInput'
+                                            valid:
+                                                const: true
+                                                type: boolean
+                                        required:
+                                            - valid
+                                            - document
+                                        type: object
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: validateConfiguration
+    /api/v1/credentials:
+        get:
+            operationId: listCredentials
+            parameters:
+                - $ref: '#/components/parameters/Cursor'
+                - $ref: '#/components/parameters/Limit'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        additionalProperties: false
+                                        properties:
+                                            items:
+                                                items:
+                                                    $ref: '#/components/schemas/CredentialAsset'
+                                                maxItems: 100
+                                                type: array
+                                            next_cursor:
+                                                maxLength: 128
+                                                type: string
+                                        required:
+                                            - items
+                                            - next_cursor
+                                        type: object
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: listCredentials
+        post:
+            operationId: createCredential
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/CredentialCreate'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/CredentialAsset'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: createCredential
+    /api/v1/credentials/{id}:
+        delete:
+            operationId: deleteCredential
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+                - $ref: '#/components/parameters/ResourceID'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        type: "null"
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: deleteCredential
+    /api/v1/listeners/{id}/connection-info:
+        post:
+            description: Requires reauthentication within the last five minutes and matching committed/runtime identity. Explicit host required; wildcard bind addresses are not exported as client hosts.
+            operationId: getConnectionInfo
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+                - $ref: '#/components/parameters/ResourceID'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/ConnectionRequest'
+                required: true
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/ConnectionInfo'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getConnectionInfo
+    /api/v1/logs:
+        get:
+            operationId: getLogs
+            parameters:
+                - $ref: '#/components/parameters/Cursor'
+                - $ref: '#/components/parameters/Limit'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/LogPage'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getLogs
+    /api/v1/operations/{id}:
+        get:
+            operationId: getOperation
+            parameters:
+                - $ref: '#/components/parameters/ResourceID'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Operation'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getOperation
+    /api/v1/setup:
+        post:
+            operationId: setupAdministrator
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/SetupRequest'
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Account'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            security: []
+            summary: setupAdministrator
+    /api/v1/setup/status:
+        get:
+            operationId: getSetupStatus
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        additionalProperties: false
+                                        properties:
+                                            needs_setup:
+                                                type: boolean
+                                        required:
+                                            - needs_setup
+                                        type: object
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            security: []
+            summary: getSetupStatus
+    /api/v1/status:
+        get:
+            operationId: getStatus
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Status'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getStatus
+    /api/v1/system/version:
+        get:
+            operationId: getSystemVersion
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/Version'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: getSystemVersion
+    /healthz:
+        get:
+            operationId: getHealth
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        additionalProperties: false
+                                        properties:
+                                            status:
+                                                const: ok
+                                                type: string
+                                        required:
+                                            - status
+                                        type: object
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Management storage is reachable; proxy readiness is not implied.
+                "503":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 50300
+                                        type: integer
+                                    data:
+                                        type: "null"
+                                    msg:
+                                        maxLength: 256
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Storage unavailable
+            security: []
+            summary: Check the local management service and storage
+security:
+    - SessionCookie: []
+    - SecureSessionCookie: []

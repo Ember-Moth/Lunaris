@@ -74,7 +74,7 @@ Shadowsocks 支持以下方法：
 
 Shadowsocks classic AEAD 每个监听器使用一份凭据；SS2022 的两种 AES 方法支持同端口多用户。SS2022 三种方法和 Naive 的配置见 [协议说明](docs/naive-ss2022.md)。Shadowsocks 插件见[独立说明](docs/shadowsocks-plugins.md)。Linux/macOS 可用 SIGHUP 重载 YAML，只重建受影响的监听器；这些监听器的旧连接会关闭。
 
-配置版本、凭据/证书资产、幂等应用和重启恢复可通过本机 CLI 使用。管理员认证、HTTP 管理 API 和 Web 操作仍后置，管理界面骨架尚未连接配置服务。协议细节与验证范围见 [Shadowsocks 实现说明](docs/shadowsocks.md)。
+配置版本、凭据/证书资产、幂等应用和重启恢复可通过本机 CLI 使用。P5 管理 API 已接入认证、资产、草稿/计划/异步应用、状态和恢复；Web 表单仍属于 P6，当前界面保持骨架。详见 [管理 API 使用说明](docs/management-implementation.md)。协议细节与验证范围见 [Shadowsocks 实现说明](docs/shadowsocks.md)。
 
 ## 本地开发
 
@@ -125,7 +125,7 @@ make check       # 依赖约束、go vet、race 测试；无需前端产物
 ./bin/lunaris version
 ```
 
-要运行现有的管理骨架，需要额外安装 Node.js 24 与 pnpm 12.16.1：
+要运行管理 API 与内嵌页面，需要额外安装 Node.js 24 与 pnpm 12.16.1：
 
 ```sh
 make install-web
@@ -134,9 +134,9 @@ make build-web
 make check-web
 ```
 
-管理骨架只允许本机 `127.0.0.1:9080`；`config.example.yaml` 是管理启动设置，`examples/shadowsocks.yaml` 是节点配置，两者用途不同。前端热更新使用 `pnpm --dir web dev`。发行 Web 构建使用 `webui` 标签内嵌静态文件，缺少前端产物时会构建失败；默认核心构建不编入前端和 Hertz。
+管理服务默认使用本机 `127.0.0.1:9080`，可显式配置原生 HTTPS 或可信 HTTPS 反代；`config.example.yaml` 是管理启动设置，`examples/shadowsocks.yaml` 是节点配置，两者用途不同。前端热更新使用 `pnpm --dir web dev`。发行 Web 构建使用 `webui` 标签内嵌静态文件，缺少前端产物时会构建失败；默认核心构建不编入前端和 Hertz。
 
-构建入口保留 `stdjson` 标签以兼容管理骨架。`web/dist` 和 `bin` 是生成产物，不提交；`go.sum`、pnpm lockfile 和生成的 API 类型纳入版本控制。
+构建入口保留 `stdjson` 标签以使用标准 JSON 编解码。`web/dist` 和 `bin` 是生成产物，不提交；`go.sum`、pnpm lockfile 和生成的 API 类型纳入版本控制。
 
 ## HTTP API
 
@@ -163,3 +163,5 @@ Naive（HTTP/1.1、HTTP/2、HTTP/3）与 Shadowsocks 2022 单/多用户的配置
 VLESS 已支持 [Encryption、Vision 与 XUDP](docs/vless-encryption-vision.md)，可用 `lunaris keygen vless` 生成配置；示例见 [vless-encryption.yaml](examples/vless-encryption.yaml)。
 
 已接入 [Shadowsocks 的六类插件](docs/shadowsocks-plugins.md)：simple-obfs、v2ray-plugin、gost-plugin、ShadowTLS、Restls 与 kcptun；配置见 [shadowsocks-plugins.yaml](examples/shadowsocks-plugins.yaml)。
+
+P5 已完成：初始化 token 文件、Argon2id 管理员密码、会话/CSRF、版本化管理 API、敏感连接参数导出及离线恢复。API 入口仍为管理构建的 `serve`；操作方法见 [P5 说明](docs/management-implementation.md)。

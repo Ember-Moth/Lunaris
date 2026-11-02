@@ -13,7 +13,7 @@ import (
 
 func Run(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Usage: lunaris run --config node.yaml\n       lunaris check --config node.yaml\n       lunaris managed --data-dir DIR [--source node.yaml]\n       lunaris config <import|show|list|draft-from|apply|operations> [options]\n       lunaris backup --data-dir DIR --output FILE\n       lunaris restore --data-dir EMPTY_DIR --input FILE\n       lunaris keygen [reality|vless]\n       lunaris version\n       lunaris serve [--config bootstrap.yaml] (webui build)\nSignals in run/managed mode (Linux/macOS): SIGHUP applies config; SIGUSR1 logs status.")
+		fmt.Println("Usage: lunaris run --config node.yaml\n       lunaris check --config node.yaml\n       lunaris managed --data-dir DIR [--source node.yaml]\n       lunaris config <import|show|list|draft-from|apply|operations> [options]\n       lunaris backup --data-dir DIR --output FILE\n       lunaris restore --data-dir EMPTY_DIR --input FILE\n       lunaris admin <setup-token|reset-password> --data-dir DIR [--password-file FILE]\n       lunaris keygen [reality|vless]\n       lunaris version\n       lunaris serve [--config bootstrap.yaml] (webui build)\nSignals in run/managed mode (Linux/macOS): SIGHUP applies config; SIGUSR1 logs status.")
 		return nil
 	}
 	switch args[0] {
@@ -25,6 +25,8 @@ func Run(ctx context.Context, args []string) error {
 		return serve(ctx, args[1:])
 	case "managed":
 		return runManaged(ctx, args[1:])
+	case "admin":
+		return runAdmin(ctx, args[1:])
 	case "config":
 		return runConfig(ctx, args[1:])
 	case "backup":

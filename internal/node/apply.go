@@ -34,9 +34,16 @@ func (e *ApplyError) Unwrap() []error {
 	return result
 }
 
-// Apply performs in-memory, compensating reconfiguration. It is intentionally
-// independent of HTTP and the durable revision transactions planned for P3.
-func (r *Runtime) Apply(ctx context.Context, input *model.RuntimeConfig) (result ApplyResult, err error) {
+var ErrStalePlan = errors.New("runtime topology changed since preview")
+
+// Apply performs in-memory, compensating reconfiguration. Durable revision
+// transactions are coordinated by the configuration service.
+func (r *Runtime) Apply(ctx context.Context, input *model.RuntimeConfig) (ApplyResult, error) {
+	return r.ApplyExpected(ctx, input, nil)
+}
+
+// ApplyExpected rejects an outdated preview before replacing active listeners.
+func (r *Runtime) ApplyExpected(ctx context.Context, input *model.RuntimeConfig, expectedEpoch *uint64) (result ApplyResult, err error) {
 	result.Outcome = "rejected"
 	if ctx == nil {
 		return result, errors.New("apply context is required")
@@ -58,6 +65,10 @@ func (r *Runtime) Apply(ctx context.Context, input *model.RuntimeConfig) (result
 	if r.blocked {
 		r.mu.Unlock()
 		return result, ErrRecoveryRequired
+	}
+	if expectedEpoch != nil && r.epoch != *expectedEpoch {
+		r.mu.Unlock()
+		return result, ErrStalePlan
 	}
 	r.applying = true
 	r.mu.Unlock()
@@ -117,6 +128,22 @@ func (r *Runtime) Apply(ctx context.Context, input *model.RuntimeConfig) (result
 			result.Outcome = "degraded"
 		}
 		return result, &ApplyError{Cause: err, Rollback: recovery}
+	}
+	if expectedEpoch != nil {
+		r.mu.RLock()
+		stale := r.epoch != *expectedEpoch
+		r.mu.RUnlock()
+		if stale {
+			cleanup, stop := context.WithTimeout(context.Background(), r.timeout())
+			defer stop()
+			cleanupErr := r.cleanupCandidates(cleanup, candidates)
+			r.markUnreleased()
+			if cleanupErr != nil {
+				result.Outcome = "degraded"
+				return result, &ApplyError{Cause: ErrStalePlan, Rollback: cleanupErr}
+			}
+			return result, ErrStalePlan
+		}
 	}
 	affected := make(map[string]bool)
 	old := make([]*record, 0)
