@@ -75,12 +75,16 @@ CPU 为测量期平均占用的三轮中位数，100% 约等于占满一个逻�
 
 ## 复现
 
+本报告是 `01f5683` 的历史文件模式实测，原始数据保留不变。精确复测需要检出包含当时压测工具的 `7c0882d`，并使用 `01f5683` 快照构建的节点二进制；当前节点已移除文件模式。
+
+当前版本的压测流程改为 JSON API 创建资产与配置，停止配置进程后，从 SQLite committed 启动独立的 managed 数据面：
+
 ```sh
 go build -C test/clients/ssplugins -o ../../../bin/ssplugins-bench ./bench
-go build -tags stdjson -trimpath -o bin/lunaris-bench .
+make build-web
 python3 scripts/bench-ssplugins.py --output docs/benchmarks/local-ssplugins.json
 ```
 
-精确复测本报告版本时，先在干净的 `01f5683` 快照中构建节点，再把二进制交给 `--server`。压测工具由当前工作区构建。测试不会修改系统代理、路由、功耗设置或生产配置。
+当前脚本记录 `node_mode: managed` 和 `provisioning: json-api`。新结果的启动方式和二进制构建不同，不能直接覆盖本报告。测试不修改系统代理、路由、功耗设置或生产配置。
 
 配置细节见[插件说明](../shadowsocks-plugins.md)。本轮没有测试其他加密方法、真实 WAN/CDN、UDP/UoT 包速率、故障恢复压力或长时内存稳定性。

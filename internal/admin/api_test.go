@@ -340,7 +340,7 @@ func TestManagementHTTPWorkflow(t *testing.T) {
 	if e.Code != 40905 {
 		t.Fatal(e)
 	}
-	for _, path := range []string{"/api/v1/config/draft", "/api/v1/config/committed", "/api/v1/credentials", "/api/v1/status", "/api/v1/logs", "/api/v1/config/template"} {
+	for _, path := range []string{"/api/v1/config/draft", "/api/v1/config/committed", "/api/v1/credentials", "/api/v1/status", "/api/v1/logs"} {
 		r, e, raw = m.request(t, "GET", path, nil, nil)
 		expectStatus(t, r, 200, e)
 		if bytes.Contains(raw, []byte("proxy-secret-before-rotation")) || bytes.Contains(raw, []byte(adminPassword)) || bytes.Contains(raw, []byte(m.setup)) {
@@ -388,8 +388,8 @@ func TestManagementHTTPInputLimits(t *testing.T) {
 	expectStatus(t, r, 400, e)
 	r, e, _ = m.request(t, "GET", "/api/v1/credentials?limit=1&limit=2", nil, nil)
 	expectStatus(t, r, 400, e)
-	r, e, _ = m.request(t, "POST", "/api/v1/config/import", map[string]any{"content": "credentials:\n - id: key\n   secret_file: /etc/passwd\n"}, map[string]string{"If-Match": "\"r0\""})
-	expectStatus(t, r, 422, e)
+	r, e, _ = m.request(t, "PUT", "/api/v1/config/draft", map[string]any{"config": map[string]any{"listeners": []any{}}, "credentials": []any{map[string]string{"id": "key", "secret_file": "/etc/passwd"}}}, map[string]string{"If-Match": "\"r0\""})
+	expectStatus(t, r, 400, e)
 }
 func TestTrustedProxyHeadersRequireConfiguredPeer(t *testing.T) {
 	m := startManagement(t, false, []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")})
@@ -496,14 +496,18 @@ func TestLogCursorsAndBounds(t *testing.T) {
 		t.Fatal(page, err)
 	}
 }
-func TestTemplateRejectsAliasesAndDuplicateFields(t *testing.T) {
-	for _, input := range []string{"a: &anchor [1,2]\nb: *anchor", "config: {}\nconfig: {}", "---\nconfig: {}\n---\nconfig: {}", "config: !!python/object abc"} {
-		if _, err := templateJSON(input); err == nil {
-			t.Fatal("unsafe YAML accepted")
-		}
-	}
-	if _, err := templateJSON("config:\n  schema_version: 1\n  listeners: []\ncredential_assets: {}\ncertificate_assets: {}\n"); err != nil {
-		t.Fatal(err)
+func TestRemovedYAMLAPIsDoNotChangeDraft(t *testing.T) {
+	m := startManagement(t, false, nil)
+	m.initialize(t)
+	m.login(t, adminPassword)
+	r, e, _ := m.request(t, "GET", "/api/v1/config/template", nil, nil)
+	expectStatus(t, r, 404, e)
+	r, e, _ = m.request(t, "POST", "/api/v1/config/import", map[string]string{"content": "config:\n  schema_version: 1\n  listeners: []\n"}, map[string]string{"If-Match": "\"r0\""})
+	expectStatus(t, r, 404, e)
+	r, e, _ = m.request(t, "GET", "/api/v1/config/draft", nil, nil)
+	expectStatus(t, r, 200, e)
+	if dataAs[model.ConfigRevision](t, e).ID != "r0" {
+		t.Fatal("removed YAML route changed the draft")
 	}
 }
 
@@ -582,15 +586,12 @@ func TestAPIRequiresDisconnectAcknowledgementAndRetainsHistory(t *testing.T) {
 	}
 	r, e, _ = m.request(t, "DELETE", "/api/v1/credentials/"+initial.ID, nil, nil)
 	expectStatus(t, r, 409, e)
-	r, e, _ = m.request(t, "GET", "/api/v1/config/template", nil, nil)
+	r, e, _ = m.request(t, "GET", "/api/v1/config/draft", nil, nil)
 	expectStatus(t, r, 200, e)
-	template := dataAs[struct {
-		Content string `json:"content"`
-	}](t, e)
-	r, e, _ = m.request(t, "POST", "/api/v1/config/import", map[string]string{"content": template.Content}, map[string]string{"If-Match": "\"" + next.ID + "\""})
-	expectStatus(t, r, 200, e)
-	if imported := dataAs[model.ConfigRevision](t, e); imported.ID != next.ID {
-		t.Fatal("template round trip changed configuration")
+	current := dataAs[model.ConfigRevision](t, e)
+	input = model.DraftInput{Config: current.Config, CredentialAssets: current.CredentialAssets, CertificateAssets: current.CertificateAssets}
+	if saved := save(next.ID); saved.ID != next.ID {
+		t.Fatal("JSON round trip changed configuration")
 	}
 }
 func TestLoginRateLimitAndDuplicateCookie(t *testing.T) {

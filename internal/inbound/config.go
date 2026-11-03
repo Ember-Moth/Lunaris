@@ -17,7 +17,7 @@ import (
 )
 
 // Normalize validates the common runtime contract and copies every mutable
-// value. File mode and future application services share this validation path.
+// value. JSON management and committed SQLite snapshots share this path.
 func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, error) {
 	if input == nil {
 		return nil, errors.New("node configuration is required")

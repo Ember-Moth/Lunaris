@@ -158,3 +158,29 @@ func TestNewProtocolConfiguration(t *testing.T) {
 		}
 	}
 }
+
+// Keep the registry's snapshot ownership coverage independent of file parsing.
+func TestXHTTPConfigurationSnapshotIsolation(t *testing.T) {
+	registry, _ := builtin.NewRegistry()
+	input := &model.RuntimeConfig{
+		Config: model.NodeConfig{SchemaVersion: 1, Limits: model.DefaultLimits(), Listeners: []model.ListenerSpec{{
+			ID: "xhttp", Enabled: true, Protocol: "vless", Address: "127.0.0.1", Port: 8080, CredentialRefs: []string{"user"}, Options: []byte(`{}`),
+			Transport: model.Transport{Type: "xhttp", Path: "/proxy", XHTTP: &model.XHTTP{Mode: "packet-up", HTTPVersion: "h1", Extra: []byte(`{"xPaddingBytes":"100-200","scMaxBufferedBytes":2097152}`)}},
+		}}}, Credentials: map[string][]byte{"user": []byte(userID)},
+	}
+	normalized, err := registry.Normalize(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(normalized.Config.Listeners[0].Network) != 1 || normalized.Config.Listeners[0].Network[0] != "tcp" {
+		t.Fatal("XHTTP network default missing")
+	}
+	input.Config.Listeners[0].Transport.XHTTP.Extra[0] = '!'
+	if normalized.Config.Listeners[0].Transport.XHTTP.Extra[0] != '{' {
+		t.Fatal("XHTTP options alias the caller's snapshot")
+	}
+	normalized.Config.Listeners[0].Transport.XHTTP.Extra = []byte(`{"unknownPadding":"100-200"}`)
+	if _, err := registry.Normalize(normalized); err == nil {
+		t.Fatal("unknown XHTTP option accepted")
+	}
+}

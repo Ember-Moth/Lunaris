@@ -213,26 +213,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/config/import": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * importConfiguration
-         * @description Imports the template shape into a draft, never applies it. YAML aliases and local file/environment reads are rejected.
-         */
-        post: operations["importConfiguration"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/config/plans": {
         parameters: {
             query?: never;
@@ -259,23 +239,6 @@ export interface paths {
         };
         /** listRevisions */
         get: operations["listRevisions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/config/template": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** getConfigurationTemplate */
-        get: operations["getConfigurationTemplate"];
         put?: never;
         post?: never;
         delete?: never;
@@ -607,11 +570,6 @@ export interface components {
         Heads: {
             committed_revision: string;
             draft_revision: string;
-        };
-        ImportRequest: {
-            certificate_assets?: components["schemas"]["AssetBindings"];
-            content: string;
-            credential_assets?: components["schemas"]["AssetBindings"];
         };
         Limits: {
             /**
@@ -1076,12 +1034,6 @@ export interface components {
             credential_ref: string;
             /** Format: uuid */
             uuid: string;
-        };
-        Template: {
-            content: string;
-            /** @constant */
-            format: "yaml";
-            revision: string;
         };
         Transport: {
             host?: string;
@@ -1706,51 +1658,6 @@ export interface operations {
             };
         };
     };
-    importConfiguration: {
-        parameters: {
-            query?: never;
-            header: {
-                /** @description Must exactly match the configured management origin. */
-                Origin: components["parameters"]["Origin"];
-                "X-CSRF-Token": components["parameters"]["CSRF"];
-                /** @description One strong revision ETag, including quotes. */
-                "If-Match": components["parameters"]["IfMatch"];
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImportRequest"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    ETag?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @constant */
-                        code: 0;
-                        data: components["schemas"]["Revision"];
-                        msg: string;
-                    };
-                };
-            };
-            /** @description Authentication, validation, conflict, limit or infrastructure error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     createApplicationPlan: {
         parameters: {
             query?: never;
@@ -1818,40 +1725,6 @@ export interface operations {
                             items: components["schemas"]["Revision"][];
                             next_cursor: string;
                         };
-                        msg: string;
-                    };
-                };
-            };
-            /** @description Authentication, validation, conflict, limit or infrastructure error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    getConfigurationTemplate: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** @constant */
-                        code: 0;
-                        data: components["schemas"]["Template"];
                         msg: string;
                     };
                 };

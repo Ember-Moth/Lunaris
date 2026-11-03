@@ -130,7 +130,7 @@ def main():
     parser.add_argument("--mihomo", type=pathlib.Path, required=True)
     parser.add_argument("--ssr-client", type=pathlib.Path, required=True)
     parser.add_argument("--mieru-client", type=pathlib.Path, required=True)
-    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris"))
+    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris-web"))
     parser.add_argument("--only", choices=["snell", "mieru", "shadowsocksr"])
     args = parser.parse_args()
     sing, mihomo, mieru, server = (str(x.resolve()) for x in (args.sing_box, args.mihomo, args.mieru_client, args.server))
@@ -187,12 +187,7 @@ def main():
             cases.append(("mihomo", f"mieru/{network}", {"name": "node", "type": "mieru", "server": "127.0.0.1", "port": mieru_port, "username": "alice", "password": base.PASSWORD, "transport": network.upper(), "multiplexing": "MULTIPLEXING_HIGH", "udp": True}))
         for item in listeners:
             item["address"] = "127.0.0.1"
-        node = root / "node.yaml"
-        node.write_text(json.dumps({"schema_version": 1, "credentials": [{"id": "one", "secret": base.PASSWORD}, {"id": "two", "secret": "second-user-password"}, {"id": "server", "secret": "shared-ssr-server-password"}], "listeners": listeners}))
-        node.chmod(0o600)
-        subprocess.run([server, "check", "--config", str(node)], check=True)
-        process = stack.enter_context(base.process([server, "run", "--config", str(node)], root / "node.log"))
-        base.ready(process, listeners[0]["port"])
+        proc = stack.enter_context(base.managed_node(server, root, listeners=listeners, credentials={"one": base.PASSWORD, "two": "second-user-password", "server": "shared-ssr-server-password"}))
         if args.only:
             prefix = "ssr/" if args.only == "shadowsocksr" else args.only + "/"
             cases = [case for case in cases if case[1].startswith(prefix)]

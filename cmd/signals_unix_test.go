@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net"
 	"os"
 	"os/exec"
@@ -20,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Ember-Moth/Lunaris/internal/node"
+	"github.com/Ember-Moth/Lunaris/internal/config"
 )
 
 type signalLog struct {
@@ -41,7 +40,7 @@ func TestNodeSignalHelper(t *testing.T) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := Run(ctx, []string{"run", "--config", os.Getenv("LUNARIS_NODE_SIGNAL_CONFIG")}); err != nil {
+	if err := Run(ctx, []string{"managed", "--data-dir", os.Getenv("LUNARIS_NODE_SIGNAL_DATA_DIR")}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -54,24 +53,11 @@ func TestProcessSignalsReloadAndReportStatus(t *testing.T) {
 	port := probe.Addr().(*net.TCPAddr).Port
 	probe.Close()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "node.yaml")
-	content := func(name string) string {
-		return fmt.Sprintf("schema_version: 1\ncredentials:\n  - id: test\n    secret: process-signal-private-value\nlisteners:\n  - id: ss\n    name: %s\n    protocol: shadowsocks\n    address: 127.0.0.1\n    port: %d\n    network: [tcp]\n    credential_refs: [test]\n    options: {method: aes-128-gcm}\n", name, port)
-	}
-	write := func(value string) {
-		t.Helper()
-		temporary := path + ".new"
-		if err := os.WriteFile(temporary, []byte(value), 0600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Rename(temporary, path); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write(content("initial"))
+	stateDir := filepath.Join(dir, "state")
+	committed, draft := seedManagedState(t, stateDir, port)
 	var output signalLog
 	command := exec.Command(os.Args[0], "-test.run=^TestNodeSignalHelper$", "-test.timeout=30s")
-	command.Env = append(os.Environ(), "LUNARIS_NODE_SIGNAL_HELPER=1", "LUNARIS_NODE_SIGNAL_CONFIG="+path)
+	command.Env = append(os.Environ(), "LUNARIS_NODE_SIGNAL_HELPER=1", "LUNARIS_NODE_SIGNAL_DATA_DIR="+stateDir)
 	command.Stdout = &output
 	command.Stderr = &output
 	if err := command.Start(); err != nil {
@@ -110,17 +96,17 @@ func TestProcessSignalsReloadAndReportStatus(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
-	wait("Node listeners started", 0)
-	status := func() node.Status {
+	wait("Managed node started", 0)
+	status := func() config.ServiceStatus {
 		t.Helper()
-		previous := strings.Count(output.text(), "Node runtime status")
+		previous := strings.Count(output.text(), "Managed node status")
 		if err := command.Process.Signal(syscall.SIGUSR1); err != nil {
 			t.Fatal(err)
 		}
-		text := wait("Node runtime status", previous)
+		text := wait("Managed node status", previous)
 		var line string
 		for _, candidate := range strings.Split(text, "\n") {
-			if strings.Contains(candidate, "Node runtime status") {
+			if strings.Contains(candidate, "Managed node status") {
 				line = candidate
 			}
 		}
@@ -132,29 +118,31 @@ func TestProcessSignalsReloadAndReportStatus(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var result node.Status
+		var result config.ServiceStatus
 		if err := json.Unmarshal([]byte(decoded), &result); err != nil {
 			t.Fatal(err)
 		}
 		return result
 	}
 	initial := status()
-	write(content("renamed"))
+	if initial.Heads.CommittedRevision != committed || initial.Heads.DraftRevision != draft || initial.RuntimeRevision != committed || initial.Runtime.Listeners[0].Name != "initial" {
+		t.Fatalf("startup applied an uncommitted draft: %+v", initial)
+	}
 	if err := command.Process.Signal(syscall.SIGHUP); err != nil {
 		t.Fatal(err)
 	}
-	wait("outcome=applied", 0)
+	wait("Managed configuration committed", 0)
 	updated := status()
-	if updated.Revision != initial.Revision+1 || updated.Listeners[0].Generation != initial.Listeners[0].Generation || updated.Listeners[0].Name != "renamed" {
+	if updated.Heads.CommittedRevision != draft || updated.RuntimeRevision != draft || updated.Runtime.Revision != initial.Runtime.Revision+1 || updated.Runtime.Listeners[0].Generation != initial.Runtime.Listeners[0].Generation || updated.Runtime.Listeners[0].Name != "renamed" {
 		t.Fatalf("incorrect signal update: %+v", updated)
 	}
-	write("listeners: [\n")
 	if err := command.Process.Signal(syscall.SIGHUP); err != nil {
 		t.Fatal(err)
 	}
-	wait("outcome=rejected", 0)
-	if status().Revision != updated.Revision {
-		t.Fatal("invalid YAML changed the active revision")
+	wait("Managed configuration committed", 1)
+	repeated := status()
+	if repeated.Runtime.Revision != updated.Runtime.Revision || repeated.Runtime.Listeners[0].Generation != updated.Runtime.Listeners[0].Generation {
+		t.Fatal("reapplying committed configuration replaced an unchanged listener")
 	}
 	if strings.Contains(output.text(), "process-signal-private-value") {
 		t.Fatal("signals exposed a credential")

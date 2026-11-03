@@ -1,0 +1,29 @@
+{
+  "config": {
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "device"
+        ],
+        "id": "encrypted-vless",
+        "options": {
+          "decryption_ref": "vless-decryption",
+          "flow": "xtls-rprx-vision"
+        },
+        "port": 8443,
+        "protocol": "vless",
+        "transport": {
+          "type": "tcp"
+        },
+        "enabled": true
+      }
+    ],
+    "schema_version": 1
+  },
+  "credential_assets": {
+    "device": "cred_device",
+    "vless-decryption": "cred_vless-decryption"
+  },
+  "certificate_assets": {}
+}

@@ -1,0 +1,148 @@
+{
+  "config": {
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "ss-user"
+        ],
+        "id": "ss-obfs",
+        "options": {
+          "method": "aes-128-gcm"
+        },
+        "port": 8101,
+        "protocol": "shadowsocks",
+        "transport": {
+          "plugin": {
+            "mode": "tls"
+          },
+          "type": "obfs"
+        },
+        "udp_over_tcp": true,
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "edge",
+        "credential_refs": [
+          "ss-user"
+        ],
+        "id": "ss-v2ray",
+        "options": {
+          "method": "aes-128-gcm"
+        },
+        "port": 8102,
+        "protocol": "shadowsocks",
+        "transport": {
+          "host": "proxy.example.com",
+          "path": "/proxy",
+          "plugin": {
+            "mux": true
+          },
+          "type": "v2ray-plugin"
+        },
+        "udp_over_tcp": true,
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "edge",
+        "credential_refs": [
+          "ss-user"
+        ],
+        "id": "ss-gost",
+        "options": {
+          "method": "aes-128-gcm"
+        },
+        "port": 8103,
+        "protocol": "shadowsocks",
+        "transport": {
+          "host": "proxy.example.com",
+          "path": "/proxy",
+          "plugin": {
+            "mux": true
+          },
+          "type": "gost-plugin"
+        },
+        "udp_over_tcp": true,
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "ss-user"
+        ],
+        "id": "ss-shadowtls",
+        "options": {
+          "method": "aes-128-gcm"
+        },
+        "port": 8104,
+        "protocol": "shadowsocks",
+        "transport": {
+          "plugin": {
+            "handshake": "www.example.com:443",
+            "password_ref": "plugin-password",
+            "strict-mode": true,
+            "version": 3
+          },
+          "type": "shadow-tls"
+        },
+        "udp_over_tcp": true,
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "ss-user"
+        ],
+        "id": "ss-restls",
+        "options": {
+          "method": "aes-128-gcm"
+        },
+        "port": 8105,
+        "protocol": "shadowsocks",
+        "transport": {
+          "plugin": {
+            "dest": "www.example.com:443",
+            "password_ref": "plugin-password"
+          },
+          "type": "restls"
+        },
+        "udp_over_tcp": true,
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "ss-user"
+        ],
+        "id": "ss-kcptun",
+        "options": {
+          "method": "aes-128-gcm"
+        },
+        "port": 8106,
+        "protocol": "shadowsocks",
+        "transport": {
+          "plugin": {
+            "crypt": "aes",
+            "key_ref": "plugin-password",
+            "mode": "fast",
+            "nocomp": false,
+            "smuxver": 1
+          },
+          "type": "kcptun"
+        },
+        "udp_over_tcp": true,
+        "enabled": true
+      }
+    ],
+    "schema_version": 1
+  },
+  "credential_assets": {
+    "ss-user": "cred_ss-user",
+    "plugin-password": "cred_plugin-password"
+  },
+  "certificate_assets": {
+    "edge": "cert_edge"
+  }
+}

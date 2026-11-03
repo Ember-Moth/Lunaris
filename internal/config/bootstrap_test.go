@@ -26,6 +26,7 @@ func TestLoadYAMLAndResolveDataDir(t *testing.T) {
 func TestRejectInvalidBootstrap(t *testing.T) {
 	cases := map[string]string{
 		"unknown field":      "admin:\n  adress: 127.0.0.1:9080\n",
+		"node configuration": "schema_version: 1\nlisteners: []\n",
 		"multiple documents": "data_dir: one\n---\ndata_dir: two\n",
 		"empty":              "",
 		"null":               "null\n",

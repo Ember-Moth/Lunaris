@@ -1,0 +1,45 @@
+{
+  "config": {
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "user"
+        ],
+        "id": "vless-reality",
+        "multiplex": {
+          "enabled": true,
+          "padding": true
+        },
+        "network": [
+          "tcp"
+        ],
+        "port": 8443,
+        "protocol": "vless",
+        "transport": {
+          "reality": {
+            "allow_legacy_clients": true,
+            "max_time_difference": 60000000000,
+            "private_key_ref": "reality-key",
+            "server_names": [
+              "target.example.net"
+            ],
+            "short_ids": [
+              "0102030405060708"
+            ],
+            "target": "target.example.net:443"
+          },
+          "type": "reality"
+        },
+        "udp_over_tcp": true,
+        "enabled": true
+      }
+    ],
+    "schema_version": 1
+  },
+  "credential_assets": {
+    "user": "cred_user",
+    "reality-key": "cred_reality-key"
+  },
+  "certificate_assets": {}
+}

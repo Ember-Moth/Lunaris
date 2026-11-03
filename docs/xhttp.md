@@ -1,5 +1,7 @@
 # XHTTP 传输
 
+配置通过 JSON API 保存为 SQLite 草稿；完整请求结构与资产 ID 替换方法见[示例说明](../examples/README.md)。下方局部片段按字段合入对应监听器。
+
 从 [Polaris 的 XHTTP 实现](https://github.com/HyperPteLtd/Polaris/tree/56d52fb44958ef3cc2a7fb841cd240f8206234b2/internal/transport/xhttp) 移植，来源提交为 `56d52fb44958ef3cc2a7fb841cd240f8206234b2`。保留三种上传模式、padding 与字段放置、乱序上传队列、会话/请求/字节限额、缓冲池和 HTTP/3 连接回收测试。没有引入 Polaris 产品模块、Xray-core 模块、本地 SagerNet 副本或 replace。
 
 ## 支持范围
@@ -27,30 +29,37 @@
 
 ## 配置
 
-完整示例见 [xhttp.yaml](../examples/xhttp.yaml)。
+完整示例见 [xhttp.json](../examples/xhttp.json)。
 
-```yaml
-protocol: vless
-credential_refs: [device]
-certificate_ref: server
-transport:
-  type: xhttp
-  path: /proxy
-  host: node.example.com
-  xhttp:
-    mode: auto
-    http_version: h2
-    extra:
-      xPaddingBytes: "100-1000"
-      scMaxEachPostBytes: 1000000
-      scMaxBufferedPosts: 30
-      scMaxBufferedBytes: 4194304
-      scMaxTotalBufferedBytes: 67108864
+```json
+{
+  "certificate_ref": "server",
+  "credential_refs": [
+    "device"
+  ],
+  "protocol": "vless",
+  "transport": {
+    "host": "node.example.com",
+    "path": "/proxy",
+    "type": "xhttp",
+    "xhttp": {
+      "extra": {
+        "scMaxBufferedBytes": 4194304,
+        "scMaxBufferedPosts": 30,
+        "scMaxEachPostBytes": 1000000,
+        "scMaxTotalBufferedBytes": 67108864,
+        "xPaddingBytes": "100-1000"
+      },
+      "http_version": "h2",
+      "mode": "auto"
+    }
+  }
+}
 ```
 
 `path` 默认为 `/`，是未转义的绝对路径，可附带查询参数。Path 前缀规范化和字段提取沿用 Polaris。`host` 可省略；配置时忽略请求 Host 的大小写和端口，不将 `X-Forwarded-For` 当作可信客户端地址。
 
-`extra` 是 YAML 映射或 API JSON 对象，保留上游字段拼写。范围值支持整数、`"from-to"` 字符串及 `{from, to}` 对象。
+`extra` 是 API JSON 对象，保留上游字段拼写。范围值支持整数、`"from-to"` 字符串及 `{from, to}` 对象。
 
 支持的服务端字段：
 
@@ -80,7 +89,7 @@ XHTTP 会话、HTTP 请求、物理连接和协议转发流分别计数。`packe
 
 ```sh
 make check
-make build
+make build-web
 python3 scripts/test-xhttp.py --client /path/to/xray
 ```
 

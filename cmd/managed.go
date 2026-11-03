@@ -19,7 +19,6 @@ import (
 func runManaged(ctx context.Context, args []string) (result error) {
 	flags := flag.NewFlagSet("managed", flag.ContinueOnError)
 	dir := flags.String("data-dir", "./data", "managed node data directory")
-	source := flags.String("source", "", "optional YAML to import only when SIGHUP is received")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -65,17 +64,6 @@ func runManaged(ctx context.Context, args []string) (result error) {
 		go func() {
 			var completed completion
 			heads, err := store.Heads(ctx)
-			if err == nil && *source != "" {
-				var snapshot *model.RuntimeConfig
-				snapshot, err = config.LoadNode(*source, registry)
-				if err == nil {
-					var saved model.ConfigRevision
-					saved, err = service.SaveDraft(ctx, heads.DraftRevision, snapshot)
-					if err == nil {
-						heads.DraftRevision = saved.ID
-					}
-				}
-			}
 			if err == nil {
 				completed.operation, err = service.Apply(ctx, "signal_"+rand.Text(), heads.DraftRevision, "")
 			}

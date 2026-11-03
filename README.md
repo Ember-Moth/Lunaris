@@ -52,7 +52,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 - [管理 API 契约](docs/management-api.md)：初始化、认证、配置、资产、状态与幂等交互。
 - [Polaris 参考对照](docs/polaris-reference.md)：可采用的协议与生命周期经验，以及本地补丁的复用边界。
 - [开发计划](docs/development-plan.md)：先完成节点核心，再实现 HTTP API 与 Web。
-- [文件模式重载与状态](docs/runtime-reload.md)：SIGHUP、凭据轮换、差异重建与失败恢复。
+- [运行时差异应用与状态](docs/runtime-reload.md)：SIGHUP、凭据轮换、差异重建与失败恢复。
 - [UoT、mux 与 REALITY](docs/connection-extensions.md)：多路复用、旧客户端兼容、密钥配置与生命周期。
 - [协议与传输工厂注册表](docs/factory-registries.md)：独立注册、组合校验、资源归属与扩展方式。
 - [协议、传输与证书](docs/protocols.md)：支持矩阵、TLS 资产、配置示例和客户端互通。
@@ -60,9 +60,9 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 
 ## 当前状态
 
-已实现节点核心、运行管理、持久化配置服务，以及首批协议与传输扩展。支持文件模式或 SQLite 管理模式，统一严格 YAML 校验、共享转发、直接出口、资源限制和凭据/证书轮换。
+已实现节点核心、运行管理、持久化配置服务，以及首批协议与传输扩展。代理配置统一持久化在 SQLite，通过结构化 JSON API 编辑、校验和应用；共享转发、直接出口、资源限制和凭据/证书轮换复用同一运行时。
 
-新增 VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC；支持 TCP/TLS、WebSocket、HTTPUpgrade、原生 QUIC、REALITY 和 XHTTP；已接入 UoT 与 smux/yamux/h2mux。具体组合见[支持矩阵](docs/protocols.md)，配置见 [protocols.yaml](examples/protocols.yaml)。
+新增 VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC；支持 TCP/TLS、WebSocket、HTTPUpgrade、原生 QUIC、REALITY 和 XHTTP；已接入 UoT 与 smux/yamux/h2mux。具体组合见[支持矩阵](docs/protocols.md)，配置见 [protocols.json](examples/protocols.json)。
 
 Shadowsocks 支持以下方法：
 
@@ -72,69 +72,42 @@ Shadowsocks 支持以下方法：
 | `aes-256-gcm` | 已实现 | 已实现 |
 | `chacha20-ietf-poly1305` | 已实现 | 已实现 |
 
-Shadowsocks classic AEAD 每个监听器使用一份凭据；SS2022 的两种 AES 方法支持同端口多用户。SS2022 三种方法和 Naive 的配置见 [协议说明](docs/naive-ss2022.md)。Shadowsocks 插件见[独立说明](docs/shadowsocks-plugins.md)。Linux/macOS 可用 SIGHUP 重载 YAML，只重建受影响的监听器；这些监听器的旧连接会关闭。
+Shadowsocks classic AEAD 每个监听器使用一份凭据；SS2022 的两种 AES 方法支持同端口多用户。SS2022 三种方法和 Naive 的配置见 [协议说明](docs/naive-ss2022.md)。Shadowsocks 插件见[独立说明](docs/shadowsocks-plugins.md)。配置应用只重建受影响的监听器；这些监听器的旧连接会关闭。
 
 配置版本、凭据/证书资产、幂等应用和重启恢复可通过本机 CLI 使用。P5 管理 API 已接入认证、资产、草稿/计划/异步应用、状态和恢复；Web 表单仍属于 P6，当前界面保持骨架。详见 [管理 API 使用说明](docs/management-implementation.md)。协议细节与验证范围见 [Shadowsocks 实现说明](docs/shadowsocks.md)。
 
 ## 本地开发
 
-节点核心只需要 Go 1.27 或更新版本，不需要 Node.js 或前端构建。
-
-```sh
-make install
-make build
-export LUNARIS_SS_PASSWORD="$(./bin/lunaris keygen)"
-./bin/lunaris check --config examples/shadowsocks.yaml
-./bin/lunaris run --config examples/shadowsocks.yaml
-```
-
-示例在 `127.0.0.1:8388` 同时监听 TCP/UDP；服务器部署时在 YAML 中明确设置所需监听地址，并在客户端使用相同方法和密码。进程入口是根目录 `main.go`，命令分发在 `cmd/run.go`。
-
-```yaml
-schema_version: 1
-credentials:
-  - id: personal
-    secret_env: LUNARIS_SS_PASSWORD
-listeners:
-  - id: ss-main
-    protocol: shadowsocks
-    address: 127.0.0.1
-    port: 8388
-    network: [tcp, udp]
-    credential_refs: [personal]
-    options:
-      method: chacha20-ietf-poly1305
-```
-
-凭据可使用 `secret_env`、相对于 YAML 文件的 `secret_file` 或直接 `secret`，三者只选一个。`check` 不绑定端口，不输出凭据；文件模式不启动 HTTP，也不读写 SQLite 的受管配置。
-
-运行后发送 `kill -HUP <pid>` 应用文件变化，`kill -USR1 <pid>` 查看日志中的状态。`secret_file` 可随重载轮换；外部修改环境变量不会更新进程已有环境。重载失败保留或恢复内存中的旧配置，不修改磁盘文件，详见 [重载说明](docs/runtime-reload.md)。
-
-需要跨重启保留最后成功配置时，改用管理模式（与文件模式二选一）：
-
-```sh
-./bin/lunaris managed --data-dir ./state --source examples/shadowsocks.yaml
-# 在另一终端发送 SIGHUP，显式导入并应用 source
-kill -HUP <pid>
-```
-
-管理模式启动只恢复已提交版本，不会自动应用 source 或草稿。离线 `config import/apply/show/operations`、`backup`、`restore` 的完整用法见 [持久化配置服务](docs/persistent-configuration.md)。默认程序现在包含 SQLite 支持，但仍不需要 Node.js、前端资源或 Hertz；文件模式依然不访问数据库。
-
-```sh
-make check       # 依赖约束、go vet、race 测试；无需前端产物
-./bin/lunaris version
-```
-
-要运行管理 API 与内嵌页面，需要额外安装 Node.js 24 与 pnpm 12.16.1：
+使用管理 API 配置节点，需要 Go 1.27 或更新版本、Node.js 24 和 pnpm 12.16.1：
 
 ```sh
 make install-web
 make build-web
 ./bin/lunaris-web serve --config config.example.yaml
-make check-web
 ```
 
-管理服务默认使用本机 `127.0.0.1:9080`，可显式配置原生 HTTPS 或可信 HTTPS 反代；`config.example.yaml` 是管理启动设置，`examples/shadowsocks.yaml` 是节点配置，两者用途不同。前端热更新使用 `pnpm --dir web dev`。发行 Web 构建使用 `webui` 标签内嵌静态文件，缺少前端产物时会构建失败；默认核心构建不编入前端和 Hertz。
+首次启动创建空数据库和私有的 `data/setup-token` 文件。通过 JSON API 完成管理员初始化、登录、创建凭据/证书资产，再保存草稿、预览计划并显式应用；步骤见 [管理 API 使用说明](docs/management-implementation.md)。P6 表单尚未接入，当前可用 HTTP 客户端操作。
+
+[config.example.yaml](config.example.yaml) 只配置数据目录、管理监听地址、HTTPS 和可信反代。代理监听器使用 [examples 中的 JSON 请求示例](examples/README.md)，替换成实际资产 ID 后提交到 `/api/v1/config/draft`。程序不从这些示例文件启动，也不监视文件变化。
+
+节点 YAML、`run`/`check`、CLI 配置导入、`managed --source` 和 HTTP YAML 模板导入/导出已移除。代理凭据、证书和配置都由 SQLite 保存；无需维护另一份节点文件。
+
+若只需运行已提交配置，可停止 `serve` 后使用不含 HTTP/前端的核心构建：
+
+```sh
+make build
+./bin/lunaris managed --data-dir ./data
+```
+
+`managed` 只恢复 committed，不自动应用草稿；Linux/macOS 的 SIGHUP 显式应用已保存草稿，SIGUSR1 输出状态。两个进程不能同时持有同一数据目录。离线查询、历史版本恢复、应用和备份见 [持久化配置服务](docs/persistent-configuration.md)。
+
+```sh
+make check       # 依赖约束、go vet、race；无需前端产物
+make check-web   # 前端构建与 lint、管理版 vet/race
+make dev         # 构建页面并运行管理服务
+```
+
+管理服务默认监听 `127.0.0.1:9080`，也可配置原生 HTTPS 或可信 HTTPS 反代。前端热更新使用 `pnpm --dir web dev`。`webui` 构建标签包含管理入口与内嵌页面；核心构建不编入 Hertz 或前端资源，但包含 SQLite。
 
 构建入口保留 `stdjson` 标签以使用标准 JSON 编解码。`web/dist` 和 `bin` 是生成产物，不提交；`go.sum`、pnpm lockfile 和生成的 API 类型纳入版本控制。
 
@@ -146,9 +119,9 @@ make check-web
 {"code":0,"msg":"ok","data":{"status":"ok"}}
 ```
 
-当前实际接口见 [OpenAPI](api/openapi.yaml)；完整管理功能的规划见 [API 契约](docs/management-api.md)。配置文件使用 YAML，HTTP 请求和响应使用 JSON。
+当前实际接口见 [OpenAPI](api/openapi.yaml)；完整管理功能的规划见 [API 契约](docs/management-api.md)。只有部署启动设置使用 YAML；代理配置通过 JSON API 保存到 SQLite。
 
-systemd 样例提供[文件模式](packaging/systemd/lunaris.service)和[管理模式](packaging/systemd/lunaris-managed.service)，尚未自动安装到系统。HTTP 管理功能不作为核心开发的前置依赖。
+systemd 样例提供[管理 API 服务](packaging/systemd/lunaris.service)和[无 HTTP 的 managed 服务](packaging/systemd/lunaris-managed.service)，尚未自动安装到系统。两者共用数据目录时只能启用一个。
 
 ## 许可证
 
@@ -156,12 +129,12 @@ systemd 样例提供[文件模式](packaging/systemd/lunaris.service)和[管理�
 
 Naive（HTTP/1.1、HTTP/2、HTTP/3）与 Shadowsocks 2022 单/多用户的配置和验证边界见 [协议说明](docs/naive-ss2022.md)。
 
-已从 Polaris 移植 [XHTTP 传输](docs/xhttp.md)，覆盖三种上传模式与 HTTP/1.1–3；配置见 [xhttp.yaml](examples/xhttp.yaml)。
+已从 Polaris 移植 [XHTTP 传输](docs/xhttp.md)，覆盖三种上传模式与 HTTP/1.1–3；配置见 [xhttp.json](examples/xhttp.json)。
 
-新增 [Snell、Mieru 与 ShadowsocksR](docs/snell-mieru-ssr.md)，配置见 [示例](examples/snell-mieru-ssr.yaml)。
+新增 [Snell、Mieru 与 ShadowsocksR](docs/snell-mieru-ssr.md)，配置见 [示例](examples/snell-mieru-ssr.json)。
 
-VLESS 已支持 [Encryption、Vision 与 XUDP](docs/vless-encryption-vision.md)，可用 `lunaris keygen vless` 生成配置；示例见 [vless-encryption.yaml](examples/vless-encryption.yaml)。
+VLESS 已支持 [Encryption、Vision 与 XUDP](docs/vless-encryption-vision.md)，可用 `lunaris keygen vless` 生成配置；示例见 [vless-encryption.json](examples/vless-encryption.json)。
 
-已接入 [Shadowsocks 的六类插件](docs/shadowsocks-plugins.md)：simple-obfs、v2ray-plugin、gost-plugin、ShadowTLS、Restls 与 kcptun；配置见 [shadowsocks-plugins.yaml](examples/shadowsocks-plugins.yaml)。
+已接入 [Shadowsocks 的六类插件](docs/shadowsocks-plugins.md)：simple-obfs、v2ray-plugin、gost-plugin、ShadowTLS、Restls 与 kcptun；配置见 [shadowsocks-plugins.json](examples/shadowsocks-plugins.json)。
 
 P5 已完成：初始化 token 文件、Argon2id 管理员密码、会话/CSRF、版本化管理 API、敏感连接参数导出及离线恢复。API 入口仍为管理构建的 `serve`；操作方法见 [P5 说明](docs/management-implementation.md)。

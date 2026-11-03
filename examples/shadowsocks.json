@@ -1,0 +1,40 @@
+{
+  "config": {
+    "limits": {
+      "dial_timeout": 10000000000,
+      "handshake_timeout": 10000000000,
+      "max_connections": 1024,
+      "max_pending_handshakes": 128,
+      "max_udp_destinations": 64,
+      "max_udp_sessions": 256,
+      "shutdown_timeout": 5000000000,
+      "udp_idle_timeout": 60000000000,
+      "udp_queue_size": 64
+    },
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "personal"
+        ],
+        "id": "ss-main",
+        "name": "Personal Shadowsocks",
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "options": {
+          "method": "chacha20-ietf-poly1305"
+        },
+        "port": 8388,
+        "protocol": "shadowsocks",
+        "enabled": true
+      }
+    ],
+    "schema_version": 1
+  },
+  "credential_assets": {
+    "personal": "cred_personal"
+  },
+  "certificate_assets": {}
+}

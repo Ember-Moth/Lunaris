@@ -1,22 +1,18 @@
-# 文件模式配置重载与状态
+# 运行时差异应用与状态
 
-状态：P2 文件模式的内存运行管理。仍使用上游 sing 模块，没有 vendor 或本地 replace；此模式不访问 HTTP、Web 或 SQLite 配置服务。需要持久化时使用 P3 的 [managed 模式](persistent-configuration.md)。
+代理配置由 SQLite 中的版本化快照提供，管理 API 与 managed CLI 共用本文描述的节点运行时。节点 YAML 入口已移除。
 
 ## 操作方式
 
-Linux 和 macOS 的 `run` 模式支持：
+`serve` 使用 JSON API 保存草稿、创建计划并确认应用，SIGHUP 不应用草稿。Linux/macOS 的无 HTTP `managed` 模式支持：
 
 ```sh
-kill -HUP <lunaris-pid>    # 重新读取启动时指定的 YAML 及其凭据文件并应用
-kill -USR1 <lunaris-pid>   # 向运行日志输出脱敏状态
+kill -HUP <lunaris-pid>    # 显式应用 SQLite 中当前保存的草稿
+kill -USR1 <lunaris-pid>   # 输出数据库版本与实际运行状态
 kill -TERM <lunaris-pid>   # 关闭节点及所有监听资源
 ```
 
-systemd 样例已配置 `ExecReload`，可用 `systemctl reload lunaris` 发送重载信号。发送信号成功不等于配置应用成功，应检查日志中的结果及状态。
-
-更新 YAML 或 `secret_file` 时，建议先完整写入同目录临时文件，再原子替换目标文件，然后发送 SIGHUP。文件配置必须明确包含 `listeners`；要停用全部监听器，使用 `listeners: []`，避免缺失列表被误解为清空节点。
-
-`secret_env` 读取的是进程现有环境。修改另一个终端的环境变量或 systemd 的 EnvironmentFile，不会改变已运行进程的环境。需要不重启进程轮换密码时使用 `secret_file` 或更新 YAML 中的 `secret`；凭据文件需可由节点进程读取。
+`lunaris-managed.service` 配置了 ExecReload；发送信号成功不等于应用成功，需检查日志与状态。运行中不能另开 CLI 修改同一数据目录。管理入口与离线操作见[持久化配置服务](persistent-configuration.md)。
 
 ## 差异应用
 
@@ -46,13 +42,13 @@ systemd 样例已配置 `ExecReload`，可用 `systemctl reload lunaris` 发送�
 - `degraded`：恢复不完整，状态中保留失败实例和具体错误，不报告恢复成功。
 - `interrupted`：节点正在退出，停止应用并清理资源，不在关闭过程中重新创建旧实例。
 
-如果资源已经确认关闭，只是旧监听器重新绑定失败，可在排除端口等问题后再次 SIGHUP，由 recover 动作修复。若无法确认某个实例已释放资源，设置 `recovery_required` 并拒绝继续应用，保留资源记录，要求重启节点。
+如果资源已经确认关闭，只是旧监听器重新绑定失败，可在排除端口等问题后重新预览/应用，或在 managed 模式发送 SIGHUP，由 recover 动作修复。若无法确认某个实例已释放资源，设置 `recovery_required` 并拒绝继续应用，保留资源记录，要求重启节点。
 
 协议实例意外退出只影响该实例，不自动终止其他监听器。状态变为 failed，运行日志会报告监听器 ID 和代次；下一次重载可恢复。退役实例的迟到事件不会覆盖新代次的状态。
 
 ## 状态语义
 
-`node.Runtime.Snapshot()` 返回独立的脱敏视图，SIGUSR1 将它写入日志：
+`node.Runtime.Snapshot()` 返回独立的脱敏视图，managed 的 SIGUSR1 在配置服务状态的 runtime 字段中将它写入日志：
 
 - `boot_id`：当前进程标识。
 - `revision`：本进程最近成功接受的配置版本，不是 SQLite 持久化版本。
@@ -60,15 +56,15 @@ systemd 样例已配置 `ExecReload`，可用 `systemctl reload lunaris` 发送�
 - `applying`、`degraded`、`recovery_required`：应用与恢复状态。
 - `listeners`：ID、名称、配置端点、代次、状态、已认证 TCP/UDP 流数（含待拨号，不含尚未认证的握手）和最近错误。
 - `retained_instances`：仍由运行时持有但尚未发布的实例，包括准备中候选与未确认回收的资源。
-- `last_apply_outcome`、`last_apply_error`：最近一次进入核心应用流程的结果；YAML 解析失败在重载日志中报告。
+- `last_apply_outcome`、`last_apply_error`：最近一次进入核心应用流程的结果。
 
 `spec_digest` 使用本次启动随机密钥计算 HMAC，包含该监听器引用的凭据内容并排除显示名称，不公开原始密码摘要。重启后的 boot_id 和摘要会变化。状态不包含密码、私钥或可变配置对象。
 
 ## 当前边界
 
-文件模式的上一份成功配置只保存在进程内存。**重载失败不会回写磁盘文件；进程重启仍读取磁盘上的文件。** 重启前应修复无效文件或失败的目标配置。跨重启的已提交版本、操作日志和恢复已经由 P3 的独立 managed 模式提供，不改变文件模式语义。
+配置服务在运行态就绪后提交 SQLite，跨重启只恢复 committed。已保存草稿不自动生效；运行态与数据库结果不一致时，状态显式报告 provisional、degraded 或写入冻结。
 
-SIGHUP 重载工作在独立任务中执行，SIGUSR1 和退出信号保持可处理。短时间重复重载会合并成一次追加读取，以最终文件内容为准。`Plan` 是核心层的即时预览，`Apply` 在串行门内重新计算差异；它不是持久化 API 的 plan token。
+SIGHUP 应用工作在独立任务中执行，SIGUSR1 和退出信号保持可处理。短时间重复信号合并为一次追加应用。核心 `Plan` 是即时预览，`Apply` 在串行门内计算差异；HTTP 预览额外绑定 boot_id、runtime_epoch 与过期时间。
 
 ## 已覆盖的验证
 

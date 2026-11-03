@@ -1,5 +1,7 @@
 # UoT、sing-mux 与 REALITY
 
+配置通过 JSON API 保存为 SQLite 草稿；完整请求结构与资产 ID 替换方法见[示例说明](../examples/README.md)。下方局部片段按字段合入对应监听器。
+
 这些功能通过现有协议工厂、传输工厂和 `internal/inbound` 组装，不引入 sing-box 产品依赖，也不维护本地 vendor 或 replace。构建要求 Go 1.27；CI 使用 Go 1.27.3。
 
 ## 支持范围
@@ -20,8 +22,10 @@ UoT 和 sing-mux 位于协议认证后的处理链，所以可以与该协议已
 
 对于可选 UoT 的协议，监听器设置：
 
-```yaml
-udp_over_tcp: true
+```json
+{
+  "udp_over_tcp": true
+}
 ```
 
 使用 `sing/common/uot` 的地址和帧编解码，识别对应版本的保留目标地址；v2 同时支持固定目标和每包目标地址。AnyTLS 固定使用 v2，服务端自动启用并拒绝 v1。其他协议未开启可选 UoT 时会明确拒绝这些保留地址，不交给 DNS 或直接出口。
@@ -30,11 +34,17 @@ UoT 请求头与首包受握手超时限制，收到实际目标地址后才进�
 
 AnyTLS 的 UDP 是协议自带的 UoT v2，不需要单独开启：
 
-```yaml
-protocol: anytls
-credential_refs: [password]
-certificate_ref: server
-transport: {type: tcp}
+```json
+{
+  "certificate_ref": "server",
+  "credential_refs": [
+    "password"
+  ],
+  "protocol": "anytls",
+  "transport": {
+    "type": "tcp"
+  }
+}
 ```
 
 ## Shadowsocks 的 UDP 模式与 mux 关系
@@ -55,23 +65,37 @@ sing-box 1.14.4 的限制属于 **Shadowsocks 出站客户端**：当 `udp_over_
 
 服务端同端口并存示例：
 
-```yaml
-protocol: shadowsocks
-network: [tcp, udp]
-credential_refs: [password]
-options: {method: aes-128-gcm}
-udp_over_tcp: true
-multiplex: {enabled: true}
+```json
+{
+  "credential_refs": [
+    "password"
+  ],
+  "multiplex": {
+    "enabled": true
+  },
+  "network": [
+    "tcp",
+    "udp"
+  ],
+  "options": {
+    "method": "aes-128-gcm"
+  },
+  "protocol": "shadowsocks",
+  "udp_over_tcp": true
+}
 ```
 
 SDK 可以手动在 mux 子流中承载 UoT，服务端处理链也能接收，但这不代表 sing-box Shadowsocks 出站会使用该组合。客户端配置应遵循它的 UoT 优先规则。AnyTLS 客户端则固定使用 UoT v2，与可选 Shadowsocks UoT 配置不同。[AnyTLS 出站源码](https://github.com/SagerNet/sing-box/blob/v1.14.4/protocol/anytls/outbound.go)
 
 ## sing-mux
 
-```yaml
-multiplex:
-  enabled: true
-  padding: true
+```json
+{
+  "multiplex": {
+    "enabled": true,
+    "padding": true
+  }
+}
 ```
 
 直接使用 `github.com/sagernet/sing-mux`，由客户端协商 smux、yamux 或 h2mux，服务端无需指定某一种。`padding: true` 要求客户端开启 padding；省略或设为 false 时接受带 padding 和不带 padding 的连接。
@@ -103,29 +127,47 @@ sing-box 1.14.4 的 REALITY 客户端会移除这个 key share；它直接连接
 
 输出 JSON 中 `private_key` 供服务端保存，`public_key` 配置到客户端。私钥使用现有凭据资产，不写入协议 options：
 
-```yaml
-schema_version: 1
-credentials:
-  - id: user
-    secret_env: LUNARIS_UUID
-  - id: reality-key
-    secret_env: LUNARIS_REALITY_PRIVATE_KEY
-listeners:
-  - id: vless-reality
-    protocol: vless
-    address: 127.0.0.1
-    port: 8443
-    credential_refs: [user]
-    multiplex: {enabled: true}
-    transport:
-      type: reality
-      reality:
-        target: target.example.net:443
-        server_names: [target.example.net]
-        private_key_ref: reality-key
-        short_ids: ["0102030405060708"]
-        max_time_difference: 1m
-        allow_legacy_clients: true
+```json
+{
+  "config": {
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "user"
+        ],
+        "id": "vless-reality",
+        "multiplex": {
+          "enabled": true
+        },
+        "port": 8443,
+        "protocol": "vless",
+        "transport": {
+          "reality": {
+            "allow_legacy_clients": true,
+            "max_time_difference": 60000000000,
+            "private_key_ref": "reality-key",
+            "server_names": [
+              "target.example.net"
+            ],
+            "short_ids": [
+              "0102030405060708"
+            ],
+            "target": "target.example.net:443"
+          },
+          "type": "reality"
+        },
+        "enabled": true
+      }
+    ],
+    "schema_version": 1
+  },
+  "credential_assets": {
+    "user": "cred_user",
+    "reality-key": "cred_reality-key"
+  },
+  "certificate_assets": {}
+}
 ```
 
 将 target 和 server_names 替换为实际 TLS 1.3 目标站点。`short_ids` 是最多 16 个十六进制字符、长度为偶数的字符串，空字符串表示允许空 short ID。时间差未设置时按 1 分钟处理；最大可设为 24 小时。`certificate_ref` 与 REALITY 配置互斥。
@@ -136,7 +178,7 @@ listeners:
 
 REALITY 私钥引用属于传输资产，不加入 `credential_refs` 中的协议用户列表。规范化校验会验证它是 base64url 编码的 32 字节 X25519 私钥；运行时指纹包含实际私钥内容，轮换会重建引用它的监听器并关闭旧连接。SQLite 的不可变凭据版本、重启恢复、备份和还原会一起保存它，无需新数据库迁移。
 
-`check` 只做本地配置和密钥校验，不访问伪装目标。启动时按当前 xtls/reality 的要求探测目标 TLS record 特征；使用上游导出的探测连接实现，同时给 socket 加入取消和超时。共享探测结果使用引用计数，最后一个监听器停止后释放。未成功完成探测的实例不会报告启动成功。
+`POST /api/v1/config/validate` 只做配置和资产校验，不访问伪装目标。启动时按当前 xtls/reality 的要求探测目标 TLS record 特征；使用上游导出的探测连接实现，同时给 socket 加入取消和超时。共享探测结果使用引用计数，最后一个监听器停止后释放。未成功完成探测的实例不会报告启动成功。
 
 认证前的回落连接也受握手期限限制，取消、重载和退出会关闭客户端及目标站 socket。协议认证后的流交给原有 relay 管理；兼容模式不会放宽用户协议的凭据校验。
 
@@ -147,7 +189,7 @@ Go 回归包含可选 UoT v1/v2、AnyTLS 默认 v2 与拒绝 v1、固定/每包�
 发行客户端验证：
 
 ```sh
-make build
+make build-web
 python3 scripts/test-interop.py --client /path/to/sing-box
 python3 scripts/test-extensions.py --client /path/to/sing-box --xray-client /path/to/xray
 ```

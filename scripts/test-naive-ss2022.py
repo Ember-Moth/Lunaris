@@ -23,7 +23,7 @@ base = ext.base
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client", type=pathlib.Path, required=True)
-    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris"))
+    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris-web"))
     parser.add_argument("--skip-naive-quic", action="store_true", help="Explicitly skip the released-client HTTP/3 case when its UDP socket path is unavailable")
     args = parser.parse_args()
     client, server = str(args.client.resolve()), str(args.server.resolve())
@@ -80,13 +80,7 @@ def main():
                         elif mode != "native":
                             outbound["multiplex"] = {"enabled": True, "protocol": mode, "padding": True}
                         cases.append((f"{method}/multi={multi}/user={user}/{mode}", outbound))
-        node = root / "node.yaml"
-        # JSON is also valid YAML; configuration remains strict and portable.
-        node.write_text(json.dumps({"schema_version": 1, "credentials": credentials, "certificates": [{"id": "tls", "certificate_file": "cert.pem", "private_key_file": "key.pem"}], "listeners": listeners}))
-        node.chmod(0o600)
-        subprocess.run([server, "check", "--config", str(node)], check=True)
-        node_process = stack.enter_context(base.process([server, "run", "--config", str(node)], root / "node.log"))
-        base.ready(node_process, listeners[0]["port"])
+        proc = stack.enter_context(base.managed_node(server, root, listeners=listeners, credentials={item["id"]: item["secret"] for item in credentials}, certificates={"tls": (cert, key)}))
         for name, outbound in cases:
             inbound = port()
             path = root / "client.json"

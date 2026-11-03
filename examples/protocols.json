@@ -1,0 +1,118 @@
+{
+  "config": {
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "server",
+        "credential_refs": [
+          "uuid"
+        ],
+        "id": "vless-ws",
+        "network": [
+          "tcp"
+        ],
+        "port": 8443,
+        "protocol": "vless",
+        "transport": {
+          "path": "/vless",
+          "type": "ws"
+        },
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "server",
+        "credential_refs": [
+          "uuid"
+        ],
+        "id": "vmess-upgrade",
+        "network": [
+          "tcp"
+        ],
+        "port": 8444,
+        "protocol": "vmess",
+        "transport": {
+          "path": "/vmess",
+          "type": "httpupgrade"
+        },
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "server",
+        "credential_refs": [
+          "password"
+        ],
+        "id": "trojan-tls",
+        "network": [
+          "tcp"
+        ],
+        "port": 8445,
+        "protocol": "trojan",
+        "transport": {
+          "type": "tcp"
+        },
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "server",
+        "credential_refs": [
+          "password"
+        ],
+        "id": "anytls",
+        "network": [
+          "tcp"
+        ],
+        "port": 8446,
+        "protocol": "anytls",
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "server",
+        "credential_refs": [
+          "password"
+        ],
+        "id": "hysteria2",
+        "network": [
+          "udp"
+        ],
+        "port": 8447,
+        "protocol": "hysteria2",
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "server",
+        "credential_refs": [
+          "password"
+        ],
+        "id": "tuic",
+        "network": [
+          "udp"
+        ],
+        "options": {
+          "congestion_control": "cubic",
+          "users": [
+            {
+              "credential_ref": "password",
+              "uuid": "c8820ed3-e4ee-47ad-a5bd-ece70763e32c"
+            }
+          ]
+        },
+        "port": 8448,
+        "protocol": "tuic",
+        "enabled": true
+      }
+    ],
+    "schema_version": 1
+  },
+  "credential_assets": {
+    "uuid": "cred_uuid",
+    "password": "cred_password"
+  },
+  "certificate_assets": {
+    "server": "cert_server"
+  }
+}

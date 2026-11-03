@@ -1,6 +1,8 @@
 # Snell、Mieru 与 ShadowsocksR
 
-三个协议共用 Lunaris 的凭据资产、协议工厂、传输工厂、relay 和重载机制。配置示例见 [snell-mieru-ssr.yaml](../examples/snell-mieru-ssr.yaml)。
+配置通过 JSON API 保存为 SQLite 草稿；完整请求结构与资产 ID 替换方法见[示例说明](../examples/README.md)。下方局部片段按字段合入对应监听器。
+
+三个协议共用 Lunaris 的凭据资产、协议工厂、传输工厂、relay 和重载机制。配置示例见 [snell-mieru-ssr.json](../examples/snell-mieru-ssr.json)。
 
 ## Snell
 
@@ -11,12 +13,17 @@
 | `5`，默认 | v4 兼容客户端 | `obfs: none/http/tls` | 一份 PSK，1–255 字节 |
 | `6` | v6 客户端 | `mode: default/unshaped/unsafe-raw` | 一份 PSK，12–255 字节 |
 
-```yaml
-protocol: snell
-credential_refs: [snell-psk]
-options:
-  version: 6
-  mode: default
+```json
+{
+  "credential_refs": [
+    "snell-psk"
+  ],
+  "options": {
+    "mode": "default",
+    "version": 6
+  },
+  "protocol": "snell"
+}
 ```
 
 Snell 监听 TCP，承载 TCP 和协议原生 UDP，包含上游的 TCP 连接复用。v5 的 HTTP/TLS obfs 是协议混淆，不使用 `certificate_ref`；v6 不接受 v5 obfs。`unsafe-raw` 是上游明文记录模式，不提供常规 PSK 加密握手保护，必须显式选择，默认不会启用。
@@ -31,18 +38,32 @@ Snell 监听 TCP，承载 TCP 和协议原生 UDP，包含上游的 TCP 连接�
 
 支持 TCP underlay、可靠 UDP、多个逻辑会话、TCP CONNECT、UDP ASSOCIATE、用户名/密码、user hint，以及源版本的 traffic-pattern protobuf 参数。
 
-```yaml
-protocol: mieru
-network: [tcp, udp]
-credential_refs: [alice, bob]
-options:
-  users:
-    - username: alice
-      credential_ref: alice
-    - username: bob
-      credential_ref: bob
-  user_hint_is_mandatory: true
-  mtu: 1400
+```json
+{
+  "credential_refs": [
+    "alice",
+    "bob"
+  ],
+  "network": [
+    "tcp",
+    "udp"
+  ],
+  "options": {
+    "mtu": 1400,
+    "user_hint_is_mandatory": true,
+    "users": [
+      {
+        "credential_ref": "alice",
+        "username": "alice"
+      },
+      {
+        "credential_ref": "bob",
+        "username": "bob"
+      }
+    ]
+  },
+  "protocol": "mieru"
+}
 ```
 
 `network` 可以是 `[tcp]`、`[udp]` 或两者，省略时同时监听 TCP/UDP；两种 underlay 均可代理 TCP 和 UDP。传输为 `native`，不叠加 TLS、UoT 或 sing-mux。`mtu` 允许 576–9000，零或省略沿用原实现默认值。
@@ -72,18 +93,34 @@ options:
 
 混淆支持 `plain`、`http_simple`、`http_post`、`tls1.0_session_auth`、`tls1.2_ticket_auth`、`tls1.2_ticket_fastauth`。混淆只应用于 TCP，UDP-only 配置必须使用 `plain`。
 
-```yaml
-protocol: shadowsocksr
-network: [tcp, udp]
-credential_refs: [alice, bob]
-options:
-  method: aes-128-cfb
-  protocol: auth_aes128_sha1
-  obfs: plain
-  server_key_ref: ssr-server
-  users:
-    - {id: 1, credential_ref: alice}
-    - {id: 2, credential_ref: bob}
+```json
+{
+  "credential_refs": [
+    "alice",
+    "bob"
+  ],
+  "network": [
+    "tcp",
+    "udp"
+  ],
+  "options": {
+    "method": "aes-128-cfb",
+    "obfs": "plain",
+    "protocol": "auth_aes128_sha1",
+    "server_key_ref": "ssr-server",
+    "users": [
+      {
+        "credential_ref": "alice",
+        "id": 1
+      },
+      {
+        "credential_ref": "bob",
+        "id": 2
+      }
+    ]
+  },
+  "protocol": "shadowsocksr"
+}
 ```
 
 `server_key_ref` 指向共享 cipher 密码，和用户凭据分开；多用户模式必须配置。单用户省略时使用该用户凭据作为 cipher 密码。客户端 password 填写共享密码，`protocol-param` 填写 `用户ID:用户密码`。服务端 `protocol_param` 和 `obfs_param` 保留源实现含义，不用来保存用户密码。
@@ -104,7 +141,7 @@ PSK、用户密码和 SSR 共享密码均使用已有凭据资产。共享密码
 
 ```sh
 make check
-make build
+make build-web
 go build -C test/clients/mieru -o /tmp/lunaris-mieru-client .
 go build -C test/clients/shadowsocksr -o /tmp/lunaris-ssr-client .
 python3 scripts/test-snell-mieru-ssr.py \

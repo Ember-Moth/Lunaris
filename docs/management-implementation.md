@@ -1,6 +1,6 @@
 # P5 管理 API 使用与验证
 
-状态：2026-11-02，P5 已接入实际配置服务和代理运行时。Web 页面仍是骨架；本阶段可通过 HTTP 客户端管理节点。接口和数据类型以 [OpenAPI](../api/openapi.yaml) 为准，前端类型由它生成。
+状态：2026-11-02，P5 已接入实际配置服务和代理运行时。Web 页面仍是骨架；本阶段可通过 HTTP 客户端管理节点。节点 YAML 已退役，仅启动设置保留 YAML。接口和数据类型以 [OpenAPI](../api/openapi.yaml) 为准，前端类型由它生成。
 
 ## 启动与初始化
 
@@ -107,13 +107,13 @@ admin:
 
 历史配置和执行中操作引用的资产不可删除。引用列表最多返回 100 条，`reference_count` 与 `references_truncated` 标明完整数量和截断。资源/历史列表分页最多 100 项；本阶段不自动删除保留历史版本。
 
-## 敏感导出、模板与日志
+## 敏感导出、配置查询与日志
 
 `POST /auth/reauth` 校验当前密码，授予当前会话 5 分钟的敏感访问资格。`POST /listeners/{id}/connection-info` 还需预期 committed_revision、明确的客户端 host，以及多用户监听器上的 credential_ref。
 
 导出格式为 `parameters-v1`，提供客户端无关的端点、协议、所选用户认证、传输和扩展参数，**不是可直接导入任意客户端的订阅链接**。仅导出所选用户及该监听器必需的共享插件密码；证书私钥不导出，REALITY/VLESS Encryption 的服务器私钥转换成客户端公钥。通配 bind 地址不会被自动写成客户端地址。响应前重新核对会话、重新认证有效期、committed 和运行摘要。
 
-`GET /config/template` 导出 YAML 配置与资产映射，不包含秘密；`POST /config/import` 只保存新草稿，仍要求 If-Match。导入接受该模板结构，拒绝 YAML alias、自定义 tag、重复字段、超深嵌套及本地文件/环境变量读取。它与节点文件模式的 `secret_env` / `secret_file` 配置不同，也不是完整备份。
+普通配置查询使用 `GET /config/draft` 与 `/config/committed`，只返回 JSON 配置和资产 ID 映射；保存使用 `PUT /config/draft`。YAML 模板与导入端点已移除，返回 404。代理配置不接受本机文件路径或环境变量引用，脱敏 JSON 查询也不能替代含秘密材料的完整备份。
 
 `GET /logs` 返回管理动作、应用完成与监听失败等服务端控制的消息；不转发原始请求、Cookie、密码或底层任意错误文本。内存环保留 512 条，游标带 boot_id；过旧或跨重启的游标显式标记 truncated / restarted。默认响应均为 no-store。
 
@@ -133,7 +133,7 @@ bin/lunaris admin reset-password --data-dir ./data --password-file new-password.
 
 - 管理连接最多 128 个，同时处理的 API 请求最多 32 个。
 - Argon2 操作最多同时 2 个。认证尝试按来源/操作限制每分钟 5 次，另外共享每分钟 30 次总预算；最多保留 32 个会话。
-- HTTP 头最多 16 KiB；请求体采用有界流式读取。认证通常限 4 KiB，改密 8 KiB，凭据 16 KiB，配置 1 MiB，YAML 导入封套 2 MiB，证书封套 3 MiB；每份证书/私钥不超过 1 MiB。
+- HTTP 头最多 16 KiB；请求体采用有界流式读取。认证通常限 4 KiB，改密 8 KiB，凭据 16 KiB，配置 1 MiB，证书封套 3 MiB；每份证书/私钥不超过 1 MiB。
 - 超限业务请求返回 JSON 信封；TLS/HTTP 头本身无法解析时可能在 Hertz 传输边界拒绝，不保证业务信封。
 - 过期会话每分钟清理，GET 不修改会话有效期。完整数据库备份还原仍走离线 CLI，Web 不提供任意命令或文件读取接口。
 

@@ -25,7 +25,7 @@ base = ext.base
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client", type=pathlib.Path, required=True)
-    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris"))
+    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris-web"))
     args = parser.parse_args()
     client, server = str(args.client.resolve()), str(args.server.resolve())
     subprocess.run([client, "version"], check=True)
@@ -64,12 +64,7 @@ def main():
             if secure:
                 item["certificate_ref"] = "tls"
             listeners.append(item)
-        node = root / "node.yaml"
-        node.write_text(json.dumps({"schema_version": 1, "credentials": [{"id": "uuid", "secret": base.UUID}, {"id": "password", "secret": base.PASSWORD}], "certificates": [{"id": "tls", "certificate_file": "cert.pem", "private_key_file": "key.pem"}], "listeners": listeners}))
-        node.chmod(0o600)
-        subprocess.run([server, "check", "--config", str(node)], check=True)
-        proc = stack.enter_context(base.process([server, "run", "--config", str(node)], root / "node.log"))
-        base.ready(proc, cases[0][4])
+        proc = stack.enter_context(base.managed_node(server, root, listeners=listeners, credentials={"uuid": base.UUID, "password": base.PASSWORD}, certificates={"tls": (cert, key)}))
         for kind, version, mode, secure, endpoint, extra in cases:
             inbound = port()
             if kind in ("vless", "vmess"):

@@ -17,3 +17,5 @@ The SSR client config accepts `ConcurrentStartup: true` for diagnostics. With
 `transport/ssr/obfs/tls1.2_ticket_auth.go` (`sendBuf` and handshake state). The
 normal interop mode writes before starting the initial read, keeping the wire
 codec unchanged. The diagnostic race is not a passing server test.
+
+The server runners require `make build-web`. They provision temporary credentials and configuration through the JSON management API, stop the management process, then launch `managed` from the committed SQLite state. Client configuration files remain private and disposable; no Lunaris node YAML is used.

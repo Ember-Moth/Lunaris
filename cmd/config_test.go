@@ -4,10 +4,10 @@ package cmd
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/Ember-Moth/Lunaris/internal/model"
 	ports "github.com/Ember-Moth/Lunaris/internal/store"
 	"github.com/Ember-Moth/Lunaris/internal/store/sqlite"
 )
@@ -16,16 +16,16 @@ func TestOfflineConfigurationCommandsAndBackup(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	dir := filepath.Join(root, "state")
-	path := filepath.Join(root, "node.yaml")
-	if err := os.WriteFile(path, []byte("schema_version: 1\ncredentials:\n  - id: personal\n    secret: cli-test-private-value\nlisteners: []\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := Run(ctx, []string{"config", "import", "--data-dir", dir, "--config", path, "--expect", "r0"}); err != nil {
-		t.Fatal(err)
-	}
 	store, err := sqlite.Open(ctx, dir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	saved, err := store.SaveDraft(ctx, "r0", &model.RuntimeConfig{Config: model.NodeConfig{SchemaVersion: 1, Limits: model.DefaultLimits(), Listeners: []model.ListenerSpec{}}, Credentials: map[string][]byte{"personal": []byte("cli-test-private-value")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.ID == "r0" {
+		t.Fatal("fixture did not create a draft")
 	}
 	heads, err := store.Heads(ctx)
 	if err != nil {
@@ -33,7 +33,7 @@ func TestOfflineConfigurationCommandsAndBackup(t *testing.T) {
 	}
 	store.Close()
 	if heads.CommittedRevision != "r0" || heads.DraftRevision == "r0" {
-		t.Fatalf("import activated config: %+v", heads)
+		t.Fatalf("saving a draft activated config: %+v", heads)
 	}
 	if err := Run(ctx, []string{"config", "apply", "--data-dir", dir, "--revision", heads.DraftRevision, "--request-id", "cli-apply"}); err != nil {
 		t.Fatal(err)

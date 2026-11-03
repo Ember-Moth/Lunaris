@@ -4,7 +4,7 @@ Lunaris 使用两个独立、构造后只读的注册表，由 `internal/inbound
 
 ```mermaid
 flowchart TD
-    C[YAML / 已提交配置] --> I[inbound.Registry 校验与组装]
+    C[JSON API / SQLite 配置快照] --> I[inbound.Registry 校验与组装]
     P[protocol.Registry] --> I
     T[transport.Registry] --> I
     I --> B[协议 Binding: Stream / Packet / QUIC / HTTP]
@@ -24,7 +24,7 @@ flowchart TD
 
 两个注册表可以独立构造、替换或裁剪。默认入口分别是 `protocol/builtin.NewProtocols()` 和 `transport/builtin.NewRegistry()`；`protocol/builtin.NewRegistry()` 是默认组装入口，返回 `*inbound.Registry`。
 
-TLS 保持为 TCP/HTTP 传输的可选封装，由 `certificate_ref` 启用；它不是另一个互斥的 `transport.type`。QUIC 必须使用 TLS。REALITY 作为独立传输提供安全握手，使用私钥资产而非证书。`native` 表示原生 TCP/UDP 套接字组，Shadowsocks 省略 `transport` 时选择它，原有 YAML 和存储快照不需要迁移。
+TLS 保持为 TCP/HTTP 传输的可选封装，由 `certificate_ref` 启用；它不是另一个互斥的 `transport.type`。QUIC 必须使用 TLS。REALITY 作为独立传输提供安全握手，使用私钥资产而非证书。`native` 表示原生 TCP/UDP 套接字组，Shadowsocks 省略 `transport` 时选择它，已有 SQLite 存储快照不需要迁移。
 
 ## 构建契约
 

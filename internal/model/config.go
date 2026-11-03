@@ -28,17 +28,17 @@ type ListenerSpec struct {
 }
 
 type Multiplex struct {
-	Enabled bool `json:"enabled,omitempty" yaml:"enabled"`
-	Padding bool `json:"padding,omitempty" yaml:"padding"`
+	Enabled bool `json:"enabled,omitempty"`
+	Padding bool `json:"padding,omitempty"`
 }
 
 // Transport describes the carrier; Network describes the listening sockets.
 type Transport struct {
 	Plugin  json.RawMessage `json:"plugin,omitempty" yaml:"-"`
-	Type    string          `json:"type,omitempty" yaml:"type"`
-	Path    string          `json:"path,omitempty" yaml:"path"`
-	Host    string          `json:"host,omitempty" yaml:"host"`
-	Reality *Reality        `json:"reality,omitempty" yaml:"reality"`
+	Type    string          `json:"type,omitempty"`
+	Path    string          `json:"path,omitempty"`
+	Host    string          `json:"host,omitempty"`
+	Reality *Reality        `json:"reality,omitempty"`
 	XHTTP   *XHTTP          `json:"xhttp,omitempty" yaml:"-"`
 }
 
@@ -49,12 +49,12 @@ type XHTTP struct {
 }
 
 type Reality struct {
-	AllowLegacyClients bool          `json:"allow_legacy_clients,omitempty" yaml:"allow_legacy_clients"`
-	Target             string        `json:"target" yaml:"target"`
-	ServerNames        []string      `json:"server_names" yaml:"server_names"`
-	PrivateKeyRef      string        `json:"private_key_ref" yaml:"private_key_ref"`
-	ShortIDs           []string      `json:"short_ids" yaml:"short_ids"`
-	MaxTimeDifference  time.Duration `json:"max_time_difference,omitempty" yaml:"max_time_difference"`
+	AllowLegacyClients bool          `json:"allow_legacy_clients,omitempty"`
+	Target             string        `json:"target"`
+	ServerNames        []string      `json:"server_names"`
+	PrivateKeyRef      string        `json:"private_key_ref"`
+	ShortIDs           []string      `json:"short_ids"`
+	MaxTimeDifference  time.Duration `json:"max_time_difference,omitempty"`
 }
 
 func (t Transport) Clone() Transport {
@@ -93,15 +93,15 @@ type RuntimeConfig struct {
 
 // Limits bounds resources owned by each listener. All durations are normalized.
 type Limits struct {
-	DialTimeout          time.Duration `json:"dial_timeout" yaml:"dial_timeout"`
-	HandshakeTimeout     time.Duration `json:"handshake_timeout" yaml:"handshake_timeout"`
-	UDPIdleTimeout       time.Duration `json:"udp_idle_timeout" yaml:"udp_idle_timeout"`
-	ShutdownTimeout      time.Duration `json:"shutdown_timeout" yaml:"shutdown_timeout"`
-	MaxConnections       int           `json:"max_connections" yaml:"max_connections"`
-	MaxPendingHandshakes int           `json:"max_pending_handshakes" yaml:"max_pending_handshakes"`
-	MaxUDPSessions       int           `json:"max_udp_sessions" yaml:"max_udp_sessions"`
-	UDPQueueSize         int           `json:"udp_queue_size" yaml:"udp_queue_size"`
-	MaxUDPDestinations   int           `json:"max_udp_destinations" yaml:"max_udp_destinations"`
+	DialTimeout          time.Duration `json:"dial_timeout"`
+	HandshakeTimeout     time.Duration `json:"handshake_timeout"`
+	UDPIdleTimeout       time.Duration `json:"udp_idle_timeout"`
+	ShutdownTimeout      time.Duration `json:"shutdown_timeout"`
+	MaxConnections       int           `json:"max_connections"`
+	MaxPendingHandshakes int           `json:"max_pending_handshakes"`
+	MaxUDPSessions       int           `json:"max_udp_sessions"`
+	UDPQueueSize         int           `json:"udp_queue_size"`
+	MaxUDPDestinations   int           `json:"max_udp_destinations"`
 }
 
 func DefaultLimits() Limits {

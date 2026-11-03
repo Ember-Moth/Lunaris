@@ -1,5 +1,7 @@
 # Shadowsocks 插件
 
+配置通过 JSON API 保存为 SQLite 草稿；完整请求结构与资产 ID 替换方法见[示例说明](../examples/README.md)。下方局部片段按字段合入对应监听器。
+
 Lunaris 支持六类内置 Shadowsocks 插件，适用于现有 classic AEAD 和 SS2022 方法。它们是独立的传输工厂，不增加代理协议种类，不启动外部插件进程。
 
 | `transport.type` | 支持范围 | 监听套接字 |
@@ -13,32 +15,45 @@ Lunaris 支持六类内置 Shadowsocks 插件，适用于现有 classic AEAD 和
 
 插件参数放在 `transport.plugin`。WebSocket 的 `path`、`host` 与 TLS 的 `certificate_ref` 仍使用现有公共字段。插件密码/密钥通过 `password_ref` 或 `key_ref` 引用凭据，不允许明文放进可回显的插件选项。
 
-完整示例见 [shadowsocks-plugins.yaml](../examples/shadowsocks-plugins.yaml)。现有 Shadowsocks 凭据、SS2022 `server_key_ref` 和多用户配置继续适用。
+完整示例见 [shadowsocks-plugins.json](../examples/shadowsocks-plugins.json)。现有 Shadowsocks 凭据、SS2022 `server_key_ref` 和多用户配置继续适用。
 
 ## 基本配置
 
-```yaml
-credentials:
-  - id: ss-user
-    secret_env: LUNARIS_SS_PASSWORD
-  - id: plugin-password
-    secret_env: LUNARIS_PLUGIN_PASSWORD
-listeners:
-  - id: ss-shadowtls
-    protocol: shadowsocks
-    address: 127.0.0.1
-    port: 8443
-    credential_refs: [ss-user]
-    options:
-      method: aes-128-gcm
-    udp_over_tcp: true
-    transport:
-      type: shadow-tls
-      plugin:
-        version: 3
-        password_ref: plugin-password
-        handshake: www.example.com:443
-        strict-mode: true
+```json
+{
+  "config": {
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "ss-user"
+        ],
+        "id": "ss-shadowtls",
+        "options": {
+          "method": "aes-128-gcm"
+        },
+        "port": 8443,
+        "protocol": "shadowsocks",
+        "transport": {
+          "plugin": {
+            "handshake": "www.example.com:443",
+            "password_ref": "plugin-password",
+            "strict-mode": true,
+            "version": 3
+          },
+          "type": "shadow-tls"
+        },
+        "udp_over_tcp": true,
+        "enabled": true
+      }
+    ]
+  },
+  "credential_assets": {
+    "ss-user": "cred_ss-user",
+    "plugin-password": "cred_plugin-password"
+  },
+  "certificate_assets": {}
+}
 ```
 
 客户端的 Shadowsocks 密码对应 `ss-user`；插件密码对应 `plugin-password`。伪装目标应与客户端的 `host`、SNI 和证书校验设置匹配。示例域名需要换成实际目标。
@@ -49,26 +64,34 @@ listeners:
 
 ### simple-obfs
 
-```yaml
-transport:
-  type: obfs
-  plugin:
-    mode: tls   # 或 http
+```json
+{
+  "transport": {
+    "plugin": {
+      "mode": "tls"
+    },
+    "type": "obfs"
+  }
+}
 ```
 
 这是混淆层，不使用 `certificate_ref`。HTTP 首包、TLS 分片和并发写入由适配器处理；内层仍须完成 Shadowsocks 认证。
 
 ### v2ray-plugin / gost-plugin
 
-```yaml
-certificate_ref: edge
-transport:
-  type: v2ray-plugin
-  path: /proxy
-  host: proxy.example.com
-  plugin:
-    mode: websocket
-    mux: true
+```json
+{
+  "certificate_ref": "edge",
+  "transport": {
+    "host": "proxy.example.com",
+    "path": "/proxy",
+    "plugin": {
+      "mode": "websocket",
+      "mux": true
+    },
+    "type": "v2ray-plugin"
+  }
+}
 ```
 
 - `mode` 默认为 `websocket`；v2ray-plugin 的 QUIC 模式未接入。
@@ -91,31 +114,37 @@ transport:
 
 ### Restls
 
-```yaml
-transport:
-  type: restls
-  plugin:
-    password_ref: plugin-password
-    dest: www.example.com:443
-    # restls-script: "250?100<1,350~100<1,600~100,300~200,300~100"
-    # min-record-len: 15
+```json
+{
+  "transport": {
+    "plugin": {
+      "dest": "www.example.com:443",
+      "password_ref": "plugin-password"
+    },
+    "type": "restls"
+  }
+}
 ```
 
 `dest` 与 `password_ref` 必填。脚本使用上游 Restls 语法，配置检查会解析它；脚本最多 4096 字节，`min-record-len` 为 0–16384（0 采用上游默认值）。目标连接在认证后继续承担伪装流量，直到实际流关闭或节点停止；握手超时不会误杀已认证的长连接。
 
 ### kcptun
 
-```yaml
-transport:
-  type: kcptun
-  plugin:
-    key_ref: plugin-password
-    crypt: aes
-    mode: fast
-    nocomp: false
-    smuxver: 1
-    datashard: 10
-    parityshard: 3
+```json
+{
+  "transport": {
+    "plugin": {
+      "crypt": "aes",
+      "datashard": 10,
+      "key_ref": "plugin-password",
+      "mode": "fast",
+      "nocomp": false,
+      "parityshard": 3,
+      "smuxver": 1
+    },
+    "type": "kcptun"
+  }
+}
 ```
 
 常用参数：`mtu`、`sndwnd`、`rcvwnd`、`datashard`、`parityshard`、`sockbuf`、`dscp`、`ratelimit`、`smuxver`、`smuxbuf`、`framesize`、`streambuf`、`keepalive`、`nocomp`、`acknodelay`。`mode` 支持 `normal`、`fast`、`fast2`、`fast3`、`manual`；只有 `manual` 使用自行设置的 `nodelay`、`interval`、`resend` 和 `nc`。
@@ -130,13 +159,13 @@ transport:
 
 ```sh
 go build -C test/clients/ssplugins -o ../../../bin/test-ssplugins-client .
-make build
+make build-web
 python3 scripts/test-ssplugins.py
 ```
 
 2026-11-01：**162 个插件/方法组合**通过，另通过 4 个错误插件凭据拒绝测试，并在每次拒绝后验证正常连接恢复，覆盖三种 classic AEAD 与三种 SS2022、并发 TCP、128 KiB TCP 数据、UoT 数据报（至 8 KiB）、WebSocket TLS/mux/early data、HTTPUpgrade、ShadowTLS 三版本、Restls 两个 TLS 版本、KCP 压缩与 smux 版本组合。macOS 本机大于默认 UDP 数据报上限的发送会返回 `message too long`，不将该失败算作协议错误或通过结果。
 
-完整 `make check`、管理构建 vet/race、Linux amd64/arm64 的 CGO=0 交叉编译及六监听器示例的 `check` 均通过。
+完整 `make check`、管理构建 vet/race、Linux amd64/arm64 的 CGO=0 交叉编译及当时六监听器文件示例的校验均通过；当前示例使用 JSON API。
 
 一次并行构建期间的 WebSocket early-data 客户端复跑超过 40 秒。随后该组合的定向测试与完整矩阵复跑通过，未复现该超时；原因尚未定位。独立客户端测试工具已增加连接上下文取消和总超时堆栈记录。
 

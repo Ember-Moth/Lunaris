@@ -7,20 +7,19 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"runtime/debug"
 )
 
 func Run(ctx context.Context, args []string) error {
 	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println("Usage: lunaris run --config node.yaml\n       lunaris check --config node.yaml\n       lunaris managed --data-dir DIR [--source node.yaml]\n       lunaris config <import|show|list|draft-from|apply|operations> [options]\n       lunaris backup --data-dir DIR --output FILE\n       lunaris restore --data-dir EMPTY_DIR --input FILE\n       lunaris admin <setup-token|reset-password> --data-dir DIR [--password-file FILE]\n       lunaris keygen [reality|vless]\n       lunaris version\n       lunaris serve [--config bootstrap.yaml] (webui build)\nSignals in run/managed mode (Linux/macOS): SIGHUP applies config; SIGUSR1 logs status.")
+		fmt.Println("Usage: lunaris managed --data-dir DIR\n       lunaris config <show|list|draft-from|apply|operations> [options]\n       lunaris backup --data-dir DIR --output FILE\n       lunaris restore --data-dir EMPTY_DIR --input FILE\n       lunaris admin <setup-token|reset-password> --data-dir DIR [--password-file FILE]\n       lunaris keygen [reality|vless]\n       lunaris version\n       lunaris serve [--config bootstrap.yaml] (webui build)\nProxy configuration is stored in SQLite and edited through the JSON management API.\nSignals in managed mode (Linux/macOS): SIGHUP applies the saved draft; SIGUSR1 logs status.")
 		return nil
 	}
 	switch args[0] {
-	case "run":
-		return runNode(ctx, args[1:], false)
-	case "check":
-		return runNode(ctx, args[1:], true)
+	case "run", "check":
+		return errors.New("node YAML commands have been removed; use serve to configure SQLite through the JSON API, or managed to run committed configuration")
 	case "serve":
 		return serve(ctx, args[1:])
 	case "managed":

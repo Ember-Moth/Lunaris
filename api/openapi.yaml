@@ -463,19 +463,6 @@ components:
                 - draft_revision
                 - committed_revision
             type: object
-        ImportRequest:
-            additionalProperties: false
-            properties:
-                certificate_assets:
-                    $ref: '#/components/schemas/AssetBindings'
-                content:
-                    maxLength: 1.048576e+06
-                    type: string
-                credential_assets:
-                    $ref: '#/components/schemas/AssetBindings'
-            required:
-                - content
-            type: object
         Limits:
             additionalProperties: false
             properties:
@@ -1904,24 +1891,6 @@ components:
                 - uuid
                 - credential_ref
             type: object
-        Template:
-            additionalProperties: false
-            properties:
-                content:
-                    maxLength: 2.097152e+06
-                    type: string
-                format:
-                    const: yaml
-                    type: string
-                revision:
-                    maxLength: 128
-                    minLength: 1
-                    type: string
-            required:
-                - format
-                - content
-                - revision
-            type: object
         Transport:
             additionalProperties: false
             properties:
@@ -2608,52 +2577,6 @@ paths:
                                 $ref: '#/components/schemas/Error'
                     description: Authentication, validation, conflict, limit or infrastructure error
             summary: draftFromRevision
-    /api/v1/config/import:
-        post:
-            description: Imports the template shape into a draft, never applies it. YAML aliases and local file/environment reads are rejected.
-            operationId: importConfiguration
-            parameters:
-                - $ref: '#/components/parameters/Origin'
-                - $ref: '#/components/parameters/CSRF'
-                - $ref: '#/components/parameters/IfMatch'
-            requestBody:
-                content:
-                    application/json:
-                        schema:
-                            $ref: '#/components/schemas/ImportRequest'
-                required: true
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                additionalProperties: false
-                                properties:
-                                    code:
-                                        const: 0
-                                        type: integer
-                                    data:
-                                        $ref: '#/components/schemas/Revision'
-                                    msg:
-                                        type: string
-                                required:
-                                    - code
-                                    - msg
-                                    - data
-                                type: object
-                    description: Success
-                    headers:
-                        ETag:
-                            schema:
-                                maxLength: 130
-                                type: string
-                default:
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-                    description: Authentication, validation, conflict, limit or infrastructure error
-            summary: importConfiguration
     /api/v1/config/plans:
         post:
             operationId: createApplicationPlan
@@ -2739,36 +2662,6 @@ paths:
                                 $ref: '#/components/schemas/Error'
                     description: Authentication, validation, conflict, limit or infrastructure error
             summary: listRevisions
-    /api/v1/config/template:
-        get:
-            operationId: getConfigurationTemplate
-            responses:
-                "200":
-                    content:
-                        application/json:
-                            schema:
-                                additionalProperties: false
-                                properties:
-                                    code:
-                                        const: 0
-                                        type: integer
-                                    data:
-                                        $ref: '#/components/schemas/Template'
-                                    msg:
-                                        type: string
-                                required:
-                                    - code
-                                    - msg
-                                    - data
-                                type: object
-                    description: Success
-                default:
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Error'
-                    description: Authentication, validation, conflict, limit or infrastructure error
-            summary: getConfigurationTemplate
     /api/v1/config/validate:
         post:
             operationId: validateConfiguration

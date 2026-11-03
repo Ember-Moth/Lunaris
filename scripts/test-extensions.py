@@ -50,7 +50,7 @@ def verify_proxy(inbound, tcp_port, udp_target_port):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client", type=pathlib.Path, required=True)
-    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris"))
+    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris-web"))
     parser.add_argument("--xray-client", type=pathlib.Path)
     args = parser.parse_args()
     client, server = str(args.client.resolve()), str(args.server.resolve())
@@ -69,12 +69,12 @@ def main():
         reality_keys = json.loads(subprocess.check_output([server, "keygen", "reality"], text=True))
         tcp = socketserver.ThreadingTCPServer(("127.0.0.1", 0), base.EchoTCP)
         udp = socketserver.UDPServer(("127.0.0.1", 0), base.EchoUDP)
-        target = socketserver.ThreadingTCPServer(("127.0.0.1", 0), base.EchoTCP)
+        target = socketserver.ThreadingTCPServer(("127.0.0.1", 0), base.EchoTLS)
         tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         tls.minimum_version = ssl.TLSVersion.TLSv1_3
         tls.load_cert_chain(cert, key)
         tls.set_alpn_protocols(["h2", "http/1.1"])
-        target.socket = tls.wrap_socket(target.socket, server_side=True)
+        target.tls_context = tls
         target.handle_error = lambda request, address: None
         for echo in (tcp, udp, target):
             echo.daemon_threads = True
@@ -89,34 +89,24 @@ def main():
             used.add(value)
             return value
         scenarios = [(*case, port()) for case in cases]
-        text = f"schema_version: 1\ncertificates:\n  - id: tls\n    certificate_file: cert.pem\n    private_key_file: key.pem\ncredentials:\n  - id: uuid\n    secret: {base.UUID}\n  - id: password\n    secret: {base.PASSWORD}\n  - id: reality-key\n    secret: {reality_keys['private_key']}\nlisteners:\n"
+        listeners = []
         for index, (kind, mode, reality, uot, endpoint) in enumerate(scenarios):
             ref = "uuid" if kind in ("vless", "vmess") else "password"
-            text += f"  - id: test-{index}\n    protocol: {kind}\n    address: 127.0.0.1\n    port: {endpoint}\n    credential_refs: [{ref}]\n"
+            listener = {"id": f"test-{index}", "protocol": kind, "address": "127.0.0.1", "port": endpoint, "credential_refs": [ref]}
             if kind == "shadowsocks":
-                text += "    options: {method: aes-128-gcm}\n"
+                listener["options"] = {"method": "aes-128-gcm"}
             if uot and kind != "anytls":
-                text += "    udp_over_tcp: true\n"
+                listener["udp_over_tcp"] = True
             if mode:
-                text += "    multiplex: {enabled: true, padding: true}\n"
+                listener["multiplex"] = {"enabled": True, "padding": True}
             if reality:
-                transport = {"type": "reality", "reality": {"target": f"127.0.0.1:{target.server_address[1]}", "server_names": ["localhost"], "private_key_ref": "reality-key", "short_ids": ["0102030405060708"], "allow_legacy_clients": True}}
-                text += f"    transport: {json.dumps(transport)}\n"
+                listener["transport"] = {"type": "reality", "reality": {"target": f"127.0.0.1:{target.server_address[1]}", "server_names": ["localhost"], "private_key_ref": "reality-key", "short_ids": ["0102030405060708"], "allow_legacy_clients": True}}
             elif kind != "shadowsocks":
-                text += "    certificate_ref: tls\n    transport: {type: tcp}\n"
+                listener.update(certificate_ref="tls", transport={"type": "tcp"})
+            listeners.append(listener)
         shared_ss_port = port()
-        text += f"  - id: ss-all-modes\n    protocol: shadowsocks\n    address: 127.0.0.1\n    port: {shared_ss_port}\n    network: [tcp, udp]\n    credential_refs: [password]\n    options: {{method: aes-128-gcm}}\n    udp_over_tcp: true\n    multiplex: {{enabled: true, padding: true}}\n"
-        node = root / "node.yaml"
-        node.write_text(text)
-        node.chmod(0o600)
-        subprocess.run([server, "check", "--config", str(node)], check=True)
-        node_log = root / "node.log"
-        node_process = stack.enter_context(base.process([server, "run", "--config", str(node)], node_log))
-        deadline = time.monotonic() + 25
-        while "Node listeners started" not in node_log.read_text():
-            if node_process.poll() is not None or time.monotonic() > deadline:
-                raise RuntimeError("node failed to prepare REALITY listeners")
-            time.sleep(0.03)
+        listeners.append({"id": "ss-all-modes", "protocol": "shadowsocks", "address": "127.0.0.1", "port": shared_ss_port, "network": ["tcp", "udp"], "credential_refs": ["password"], "options": {"method": "aes-128-gcm"}, "udp_over_tcp": True, "multiplex": {"enabled": True, "padding": True}})
+        node_process = stack.enter_context(base.managed_node(server, root, listeners=listeners, credentials={"uuid": base.UUID, "password": base.PASSWORD, "reality-key": reality_keys["private_key"]}, certificates={"tls": (cert, key)}))
         for kind, mode, reality, uot, endpoint in scenarios:
             outbound = {"type": kind, "tag": "proxy", "server": "127.0.0.1", "server_port": endpoint}
             if kind in ("vless", "vmess"):

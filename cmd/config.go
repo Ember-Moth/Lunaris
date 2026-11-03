@@ -24,17 +24,14 @@ func printJSON(value any) error {
 
 func runConfig(ctx context.Context, args []string) (result error) {
 	if len(args) == 0 {
-		return errors.New("use config import, show, list, draft-from, apply or operations")
+		return errors.New("use config show, list, draft-from, apply or operations; create drafts through the JSON management API")
 	}
 	command := args[0]
 	flags := flag.NewFlagSet("config "+command, flag.ContinueOnError)
 	dir := flags.String("data-dir", "./data", "managed node data directory")
-	var path, revision, expected, key, base string
+	var revision, expected, key, base string
 	var limit int
 	switch command {
-	case "import":
-		flags.StringVar(&path, "config", "", "node YAML to save as a draft")
-		flags.StringVar(&expected, "expect", "", "expected draft revision (defaults to current head)")
 	case "show":
 		flags.StringVar(&revision, "revision", "", "revision to inspect (defaults to draft)")
 	case "list", "operations":
@@ -58,9 +55,6 @@ func runConfig(ctx context.Context, args []string) (result error) {
 	if flags.NArg() != 0 {
 		return errors.New("unexpected config command arguments")
 	}
-	if command == "import" && path == "" {
-		return errors.New("import requires --config")
-	}
 	if command == "draft-from" && revision == "" {
 		return errors.New("draft-from requires --revision")
 	}
@@ -70,13 +64,6 @@ func runConfig(ctx context.Context, args []string) (result error) {
 	registry, err := builtin.NewRegistry()
 	if err != nil {
 		return err
-	}
-	var imported *model.RuntimeConfig
-	if command == "import" {
-		imported, err = config.LoadNode(path, registry)
-		if err != nil {
-			return err
-		}
 	}
 	store, err := sqlite.Open(ctx, *dir)
 	if err != nil {
@@ -88,21 +75,19 @@ func runConfig(ctx context.Context, args []string) (result error) {
 		return err
 	}
 	switch command {
-	case "import", "draft-from":
-		if command == "draft-from" {
-			imported, err = store.Resolve(ctx, revision)
-			if err != nil {
-				return err
-			}
-			imported, err = registry.Normalize(imported)
-			if err != nil {
-				return err
-			}
+	case "draft-from":
+		snapshot, err := store.Resolve(ctx, revision)
+		if err != nil {
+			return err
+		}
+		snapshot, err = registry.Normalize(snapshot)
+		if err != nil {
+			return err
 		}
 		if expected == "" {
 			expected = heads.DraftRevision
 		}
-		saved, err := store.SaveDraft(ctx, expected, imported)
+		saved, err := store.SaveDraft(ctx, expected, snapshot)
 		if err != nil {
 			return err
 		}

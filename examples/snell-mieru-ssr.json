@@ -1,0 +1,88 @@
+{
+  "config": {
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "snell"
+        ],
+        "id": "snell-v6",
+        "options": {
+          "mode": "default",
+          "version": 6
+        },
+        "port": 8388,
+        "protocol": "snell",
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "alice",
+          "bob"
+        ],
+        "id": "mieru",
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "options": {
+          "mtu": 1400,
+          "user_hint_is_mandatory": true,
+          "users": [
+            {
+              "credential_ref": "alice",
+              "username": "alice"
+            },
+            {
+              "credential_ref": "bob",
+              "username": "bob"
+            }
+          ]
+        },
+        "port": 8389,
+        "protocol": "mieru",
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "alice",
+          "bob"
+        ],
+        "id": "ssr",
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "options": {
+          "method": "aes-128-cfb",
+          "obfs": "plain",
+          "protocol": "auth_aes128_sha1",
+          "server_key_ref": "ssr-server",
+          "users": [
+            {
+              "credential_ref": "alice",
+              "id": 1
+            },
+            {
+              "credential_ref": "bob",
+              "id": 2
+            }
+          ]
+        },
+        "port": 8390,
+        "protocol": "shadowsocksr",
+        "enabled": true
+      }
+    ],
+    "schema_version": 1
+  },
+  "credential_assets": {
+    "snell": "cred_snell",
+    "alice": "cred_alice",
+    "bob": "cred_bob",
+    "ssr-server": "cred_ssr-server"
+  },
+  "certificate_assets": {}
+}

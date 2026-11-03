@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Measure loopback plaintext goodput and separate-process RSS/CPU for SS plugins.
 
-Requires macOS/BSD ps, Go benchmark helper, openssl, and a production node binary.
+Requires macOS/BSD ps, Go benchmark helper, openssl, and a management-enabled node binary.
 The target/client/node are distinct processes. No production source or OS tuning changes.
 """
 import argparse
@@ -21,8 +21,12 @@ import socket
 import statistics
 import subprocess
 import tempfile
+import sys
 import threading
 import time
+
+sys.dont_write_bytecode = True
+from management_client import seed_node, managed_process
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COLUMNS = ["seconds", "phase", "node_rss_mib", "node_cpu_seconds", "client_rss_mib", "client_cpu_seconds", "peer_rss_mib", "peer_cpu_seconds"]
@@ -88,14 +92,6 @@ def read_events(p):
                 events.put(data)
     threading.Thread(target=reader, daemon=True).start()
     return events
-
-
-def wait_node(p, log):
-    end = time.monotonic() + 15
-    while "Node listeners started" not in log.read_text():
-        if p.poll() is not None or time.monotonic() > end:
-            raise RuntimeError("node failed to start: " + log.read_text()[-1000:])
-        time.sleep(0.03)
 
 
 def observe(pid, seconds):
@@ -204,7 +200,7 @@ def save(output, report):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--server", type=pathlib.Path, default=ROOT / "bin/lunaris-bench")
+    p.add_argument("--server", type=pathlib.Path, default=ROOT / "bin/lunaris-web")
     p.add_argument("--client", type=pathlib.Path, default=ROOT / "bin/ssplugins-bench")
     p.add_argument("--output", type=pathlib.Path, required=True)
     p.add_argument("--filter", default="")
@@ -222,7 +218,7 @@ def main():
     rng = random.Random(20261101)
     power = command("pmset", "-g", "batt").splitlines()[0]
     node_build = [line.strip() for line in command("go", "version", "-m", server).splitlines()[1:] if line.strip().startswith("build") ]
-    report = {"started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(), "source_commit": command("git", "-C", str(ROOT), "rev-parse", "HEAD"), "server_sha256": hashlib.sha256(pathlib.Path(server).read_bytes()).hexdigest(), "go": command("go", "version"), "power_source":power, "server_build":node_build, "os": platform.platform(), "cpu": command("sysctl", "-n", "machdep.cpu.brand_string"), "cpus": int(command("sysctl", "-n", "hw.ncpu")), "ram_bytes": int(command("sysctl", "-n", "hw.memsize")), "runtime_env": {k: os.environ.get(k, "default") for k in ("GOMAXPROCS", "GOGC", "GOMEMLIMIT")}, "seconds": args.seconds, "warmup_seconds": args.warmup, "repeats": args.repeats, "sample_columns": COLUMNS, "cases": []}
+    report = {"started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(), "source_commit": command("git", "-C", str(ROOT), "rev-parse", "HEAD"), "node_mode": "managed", "provisioning": "json-api", "server_sha256": hashlib.sha256(pathlib.Path(server).read_bytes()).hexdigest(), "go": command("go", "version"), "power_source":power, "server_build":node_build, "os": platform.platform(), "cpu": command("sysctl", "-n", "machdep.cpu.brand_string"), "cpus": int(command("sysctl", "-n", "hw.ncpu")), "ram_bytes": int(command("sysctl", "-n", "hw.memsize")), "runtime_env": {k: os.environ.get(k, "default") for k in ("GOMAXPROCS", "GOGC", "GOMEMLIMIT")}, "seconds": args.seconds, "warmup_seconds": args.warmup, "repeats": args.repeats, "sample_columns": COLUMNS, "cases": []}
     with tempfile.TemporaryDirectory(prefix="lunaris-throughput-") as temp, contextlib.ExitStack() as stack:
         root = pathlib.Path(temp)
         subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", str(root / "key.pem"), "-out", str(root / "cert.pem"), "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -245,8 +241,9 @@ def main():
                     listener["transport"].update(path="/bench", host="localhost")
             if secure:
                 listener["certificate_ref"] = "tls"
-            node_file = root / "node.yaml"
-            node_file.write_text(json.dumps({"schema_version": 1, "credentials": [{"id": "user", "secret": secret}, {"id": "plugin", "secret": "benchmark-plugin-password"}], "certificates": [{"id": "tls", "certificate_file": "cert.pem", "private_key_file": "key.pem"}], "listeners": [listener]})); node_file.chmod(0o600)
+            state = None
+            if kind != "direct":
+                state = seed_node(server, root / f"case-{len(report['cases'])}", listeners=[listener], credentials={"user": secret, "plugin": "benchmark-plugin-password"}, certificates={"tls": (root / "cert.pem", root / "key.pem")})
             common = {"Server": f"127.0.0.1:{port}", "Method": method, "Password": secret, "Plugin": kind, "PluginOpts": client_options, "Target": addresses["data"], "WarmupSeconds": args.warmup, "Seconds": args.seconds}
             case = {"name": name, "method": method, "power_source":command("pmset", "-g", "batt").splitlines()[0], "throughput": []}
             report["cases"].append(case)
@@ -254,8 +251,7 @@ def main():
                 node = None
                 if kind != "direct":
                     log = root / "node.log"
-                    node = scope.enter_context(process([server, "run", "--config", str(node_file)], log))
-                    wait_node(node, log)
+                    node = scope.enter_context(managed_process(server, state, log))
                     case["idle_rss"] = observe(node.pid, 1)
                 for repeat in range(args.repeats):
                     schedule = [(d, n) for d in ("download", "upload") for n in (1, 8)]
@@ -271,8 +267,7 @@ def main():
                             raise RuntimeError("node exited during load: " + log.read_text()[-1200:])
             if kind != "direct" and not args.skip_memory:
                 print(f"MEMORY {name}", flush=True)
-                with process([server, "run", "--config", str(node_file)], root / "node-memory.log") as node:
-                    wait_node(node, root / "node-memory.log")
+                with managed_process(server, state, root / "node-memory.log") as node:
                     memory = {"idle": observe(node.pid, 1)}
                     case["memory"] = memory
                     for count in (32, 128):

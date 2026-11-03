@@ -26,7 +26,7 @@ base = ext.base
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client", type=pathlib.Path, required=True)
-    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris"))
+    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris-web"))
     args = parser.parse_args()
     client, server = str(args.client.resolve()), str(args.server.resolve())
     subprocess.run([client, "version"], check=True)
@@ -45,12 +45,12 @@ def main():
         udp = socketserver.UDPServer(("127.0.0.1", 0), base.EchoUDP)
         targets = []
         for version in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
-            target = socketserver.ThreadingTCPServer(("127.0.0.1", 0), base.EchoTCP)
+            target = socketserver.ThreadingTCPServer(("127.0.0.1", 0), base.EchoTLS)
             tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             tls.minimum_version = tls.maximum_version = version
             tls.load_cert_chain(cert, key)
             tls.set_alpn_protocols(["h2", "http/1.1"])
-            target.socket = tls.wrap_socket(target.socket, server_side=True)
+            target.tls_context = tls
             target.handle_error = lambda request, address: None
             targets.append(target)
         for echo in (tcp, udp, *targets):
@@ -91,17 +91,7 @@ def main():
             else:
                 item["transport"] = {"type": carrier, "path": "/proxy"}
             listeners.append(item)
-        node = root / "node.yaml"
-        node.write_text(json.dumps({"schema_version": 1, "credentials": credentials, "certificates": [{"id": "tls", "certificate_file": "cert.pem", "private_key_file": "key.pem"}], "listeners": listeners}))
-        node.chmod(0o600)
-        subprocess.run([server, "check", "--config", str(node)], check=True)
-        node_log = root / "node.log"
-        proc = stack.enter_context(base.process([server, "run", "--config", str(node)], node_log))
-        deadline = time.monotonic() + 25
-        while "Node listeners started" not in node_log.read_text():
-            if proc.poll() is not None or time.monotonic() > deadline:
-                raise RuntimeError("node failed to start")
-            time.sleep(0.03)
+        proc = stack.enter_context(base.managed_node(server, root, listeners=listeners, credentials={item["id"]: item["secret"] for item in credentials}, certificates={"tls": (cert, key)}))
         for carrier, mode, rtt, vision, endpoint in cases:
             inbound = port()
             user = {"id": base.UUID, "encryption": "none" if mode == "none" else f"mlkem768x25519plus.{mode if mode in ('native', 'xorpub', 'random') else 'native'}.{rtt}.100-35-35.{key_pairs[mode]['public_key']}"}

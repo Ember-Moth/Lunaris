@@ -1,5 +1,7 @@
 # VLESS Encryption 与 Vision
 
+配置通过 JSON API 保存为 SQLite 草稿；完整请求结构与资产 ID 替换方法见[示例说明](../examples/README.md)。下方局部片段按字段合入对应监听器。
+
 VLESS 工厂支持 `mlkem768x25519plus` Encryption 和 `xtls-rprx-vision`。协议服务由 Polaris 的 VLESS 扩展移植，传输、凭据解析、重载和转发继续使用 Lunaris 的现有接口。来源与许可见[第三方声明](../THIRD_PARTY_NOTICES.md)。
 
 ## 配置
@@ -10,29 +12,41 @@ bin/lunaris keygen vless
 
 输出 JSON 中的 `decryption` 是服务端秘密配置，`encryption` 是客户端配置。生成器使用 X25519 静态认证密钥；协议的 1-RTT 密钥协商仍使用 ML-KEM-768 + X25519。客户端 UUID 与 `credential_refs` 对应。
 
-将完整的服务端 `decryption` 保存为凭据，使用 `options.decryption_ref` 引用，支持 `secret_env`、`secret_file` 或加密凭据存储。不要把私钥直接放进 `options`：监听器配置会出现在管理 API 和配置导出中。
+将完整的服务端 `decryption` 保存为凭据，使用 `options.decryption_ref` 引用，通过 JSON API 创建或生成不可变凭据资产。不要把私钥直接放进 `options`：监听器配置会出现在管理 API 和配置导出中。
 
-```yaml
-schema_version: 1
-credentials:
-  - id: device
-    secret_env: LUNARIS_UUID
-  - id: vless-decryption
-    secret_env: LUNARIS_VLESS_DECRYPTION
-listeners:
-  - id: encrypted-vless
-    protocol: vless
-    address: 127.0.0.1
-    port: 8443
-    credential_refs: [device]
-    options:
-      decryption_ref: vless-decryption
-      flow: xtls-rprx-vision
-    transport:
-      type: tcp
+```json
+{
+  "config": {
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "credential_refs": [
+          "device"
+        ],
+        "id": "encrypted-vless",
+        "options": {
+          "decryption_ref": "vless-decryption",
+          "flow": "xtls-rprx-vision"
+        },
+        "port": 8443,
+        "protocol": "vless",
+        "transport": {
+          "type": "tcp"
+        },
+        "enabled": true
+      }
+    ],
+    "schema_version": 1
+  },
+  "credential_assets": {
+    "device": "cred_device",
+    "vless-decryption": "cred_vless-decryption"
+  },
+  "certificate_assets": {}
+}
 ```
 
-完整示例：[vless-encryption.yaml](../examples/vless-encryption.yaml)。省略 `flow` 即普通 VLESS Encryption；省略 `decryption_ref` 即关闭 Encryption。引用空值或 `none` 会报错，避免错误配置悄悄关闭加密。同一监听器的全部 UUID 使用相同 flow。
+完整示例：[vless-encryption.json](../examples/vless-encryption.json)。省略 `flow` 即普通 VLESS Encryption；省略 `decryption_ref` 即关闭 Encryption。引用空值或 `none` 会报错，避免错误配置悄悄关闭加密。同一监听器的全部 UUID 使用相同 flow。
 
 只用 TLS + Vision 时，设置 `certificate_ref`、`transport.type: tcp` 和 `options.flow: xtls-rprx-vision`。REALITY + Vision 使用既有 [REALITY 配置](connection-extensions.md)，添加同一 flow 即可。
 
@@ -77,12 +91,12 @@ mlkem768x25519plus.<mode>.<ticket>[.<padding>].<private-key>[.<private-key>...]
 独立客户端脚本：
 
 ```sh
-make build
+make build-web
 python3 scripts/test-vless.py --client /path/to/xray
 ```
 
 脚本使用临时回环监听器和证书，覆盖三种模式、1-RTT/0-RTT、Vision 开关、各传输、XUDP、内层 TLS 1.2/1.3 和大数据传输；同一 Xray 进程连续建连，实际使用恢复 ticket。另测 ML-KEM-768 静态认证与混合密钥链。
 
-2026-11-01 验证结果：`make check`、管理构建 vet/race、Linux amd64/arm64 的 CGO=0 交叉编译，以及 **96 个独立 Xray 互通组合**全部通过。配置示例通过 `lunaris check`。
+2026-11-01 验证结果：`make check`、管理构建 vet/race、Linux amd64/arm64 的 CGO=0 交叉编译，以及 **96 个独立 Xray 互通组合**全部通过。当时的配置校验记录基于旧文件入口；当前使用 JSON API 校验并保存草稿。
 
 记录的互通客户端是 Xray 26.10.31，官方源码 `a4a3dff5b20c` 的独立构建。验证仅针对本机回环；公网/CDN、长期负载和真实客户端设备不在本次证据范围内。未接入 Vision seed 参数、ML-DSA、gRPC 或 PacketAddr。

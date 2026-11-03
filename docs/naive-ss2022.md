@@ -1,27 +1,42 @@
 # Naive 与 Shadowsocks 2022
 
+配置通过 JSON API 保存为 SQLite 草稿；完整请求结构与资产 ID 替换方法见[示例说明](../examples/README.md)。下方局部片段按字段合入对应监听器。
+
 两者通过现有协议注册表组装，沿用凭据资产、限额、重载和共享 relay。Shadowsocks 2022 仍使用 `protocol: shadowsocks`，由 `options.method` 选择。
 
 ## Naive
 
 支持带 TLS 的 HTTP/1.1 CONNECT、HTTP/2 和 HTTP/3，包含 Naive variant-1 padding、多用户认证及 UoT v1/v2。默认传输是 `http`，监听 TCP 并通过 ALPN 协商 HTTP/2 或 HTTP/1.1；`quic` 监听 UDP，承载 HTTP/3。两种传输均要求 `certificate_ref`，不接受 WebSocket、HTTPUpgrade、REALITY 或额外 sing-mux。
 
-```yaml
-protocol: naive
-credential_refs: [phone, laptop]
-certificate_ref: server
-transport: {type: http} # HTTP/3 使用 quic
-options:
-  users:
-    - username: alice
-      credential_ref: phone
-    - username: bob
-      credential_ref: laptop
+```json
+{
+  "certificate_ref": "server",
+  "credential_refs": [
+    "phone",
+    "laptop"
+  ],
+  "options": {
+    "users": [
+      {
+        "credential_ref": "phone",
+        "username": "alice"
+      },
+      {
+        "credential_ref": "laptop",
+        "username": "bob"
+      }
+    ]
+  },
+  "protocol": "naive",
+  "transport": {
+    "type": "http"
+  }
+}
 ```
 
 用户名与凭据引用一一对应，密码仅存于凭据资产。服务端自动识别 UoT；sing-box 客户端转发 UDP 时须设置 `udp_over_tcp.enabled: true`，通常选择 version 2。HTTP/3 使用 QUIC 流承载 UoT，并不是原生 UDP 数据报代理或 MASQUE。
 
-要同时提供 HTTP/2 与 HTTP/3，配置两个监听器，分别使用 `http` 和 `quic`；可以共用同一数字端口，因为 TCP 与 UDP 套接字独立。完整示例见 [naive-ss2022.yaml](../examples/naive-ss2022.yaml)。
+要同时提供 HTTP/2 与 HTTP/3，配置两个监听器，分别使用 `http` 和 `quic`；可以共用同一数字端口，因为 TCP 与 UDP 套接字独立。完整示例见 [naive-ss2022.json](../examples/naive-ss2022.json)。
 
 HTTP、HTTP/2 和 HTTP/3 的监听、TLS、连接限制归传输层所有；Naive 工厂只接收 HTTP 请求并进行认证、padding 和目标地址处理。HTTP/2/3 流关闭会先中断并等待读写结束，再结束 HTTP handler。QUIC 0-RTT 关闭。未实现伪装网站、自动证书签发或流量不可识别性保证。
 
@@ -39,31 +54,50 @@ HTTP、HTTP/2 和 HTTP/3 的监听、TLS、连接限制归传输层所有；Naiv
 
 单用户模式只引用一个密钥：
 
-```yaml
-protocol: shadowsocks
-credential_refs: [ss-user]
-options:
-  method: 2022-blake3-aes-128-gcm
+```json
+{
+  "credential_refs": [
+    "ss-user"
+  ],
+  "options": {
+    "method": "2022-blake3-aes-128-gcm"
+  },
+  "protocol": "shadowsocks"
+}
 ```
 
 多用户模式将服务端身份密钥与用户密钥分开：
 
-```yaml
-protocol: shadowsocks
-credential_refs: [ss-alice, ss-bob]
-options:
-  method: 2022-blake3-aes-128-gcm
-  server_key_ref: ss-server
+```json
+{
+  "credential_refs": [
+    "ss-alice",
+    "ss-bob"
+  ],
+  "options": {
+    "method": "2022-blake3-aes-128-gcm",
+    "server_key_ref": "ss-server"
+  },
+  "protocol": "shadowsocks"
+}
 ```
 
 `server_key_ref` 指向独立凭据资产，不加入用户 `credential_refs`。客户端 password 使用 `服务端密钥:该用户密钥`。所有密钥均需满足该方法的长度约束。服务端密钥、用户密钥或用户列表变化会重建监听器并撤销旧会话；非法密钥在停止现有监听器之前被拒绝。服务端密钥引用参与运行时指纹与持久化版本，沿用既有凭据存储，不增加数据库迁移。
 
 三种方法都支持原生 TCP/UDP、可选 UoT v1/v2 以及 smux/yamux/h2mux；与 classic AEAD 一样，可以同时开放原生 UDP、UoT 和 mux：
 
-```yaml
-network: [tcp, udp]
-udp_over_tcp: true
-multiplex: {enabled: true, padding: true}
+```json
+{
+  "multiplex": {
+    "enabled": true,
+    "padding": true
+  },
+  "network": [
+    "tcp",
+    "udp"
+  ],
+  "udp_over_tcp": true
+}
 ```
 
 密码学、时间戳验证、协议帧和响应编码使用 `sing-shadowsocks/shadowaead_2022`。锁定上游 `65740e0f0e3e`，包含首个大响应分段及输入长度校验修复；使用远程 Go module，无本地 vendor/replace。[上游源码](https://github.com/SagerNet/sing-shadowsocks/tree/65740e0f0e3ea0d78beb9f3972ba42a75a6cd160/shadowaead_2022)
@@ -74,7 +108,7 @@ multiplex: {enabled: true, padding: true}
 
 ```sh
 make check
-make build
+make build-web
 python3 scripts/test-naive-ss2022.py --client /path/to/sing-box
 ```
 

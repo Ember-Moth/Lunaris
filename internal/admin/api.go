@@ -110,8 +110,6 @@ func (a *API) Register(h *server.Hertz) {
 	g.POST("/certificates", a.createCertificate)
 	g.DELETE("/certificates/:id", a.deleteCertificate)
 	g.POST("/listeners/:id/connection-info", a.connectionInfo)
-	g.GET("/config/template", a.template)
-	g.POST("/config/import", a.importConfig)
 }
 func (a *API) fail(c *app.RequestContext, status, code int, message string, data any) {
 	if data == nil {

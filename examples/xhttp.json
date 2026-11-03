@@ -1,0 +1,57 @@
+{
+  "config": {
+    "listeners": [
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "server",
+        "credential_refs": [
+          "device"
+        ],
+        "id": "vless-xhttp",
+        "port": 8443,
+        "protocol": "vless",
+        "transport": {
+          "path": "/proxy",
+          "type": "xhttp",
+          "xhttp": {
+            "extra": {
+              "scMaxBufferedBytes": 4194304,
+              "scMaxEachPostBytes": 1000000,
+              "scMaxTotalBufferedBytes": 67108864,
+              "xPaddingBytes": "100-1000"
+            },
+            "http_version": "h2",
+            "mode": "auto"
+          }
+        },
+        "enabled": true
+      },
+      {
+        "address": "127.0.0.1",
+        "certificate_ref": "server",
+        "credential_refs": [
+          "device"
+        ],
+        "id": "vless-xhttp-h3",
+        "port": 8443,
+        "protocol": "vless",
+        "transport": {
+          "path": "/proxy",
+          "type": "xhttp",
+          "xhttp": {
+            "http_version": "h3",
+            "mode": "auto"
+          }
+        },
+        "enabled": true
+      }
+    ],
+    "schema_version": 1
+  },
+  "credential_assets": {
+    "device": "cred_device"
+  },
+  "certificate_assets": {
+    "server": "cert_server"
+  }
+}

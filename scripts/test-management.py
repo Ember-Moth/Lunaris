@@ -2,92 +2,17 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Exercise the real management binary, restart, credentials and offline recovery."""
 import argparse
-import contextlib
-import http.client
-import http.cookies
 import json
 import pathlib
 import socket
 import subprocess
 import tempfile
+import sys
 import time
 
 
-def free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-class API:
-    def __init__(self, port):
-        self.port = port
-        self.origin = f"http://127.0.0.1:{port}"
-        self.cookie = ""
-        self.csrf = ""
-
-    def call(self, method, path, value=None, *, status=200, headers=None):
-        body = json.dumps(value) if value is not None else None
-        h = {"Origin": self.origin}
-        if body is not None:
-            h["Content-Type"] = "application/json"
-        if self.cookie:
-            h["Cookie"] = self.cookie
-        if self.csrf:
-            h["X-CSRF-Token"] = self.csrf
-        h.update(headers or {})
-        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
-        try:
-            conn.request(method, path, body=body, headers=h)
-            response = conn.getresponse()
-            raw = response.read()
-            data = json.loads(raw)
-            assert response.status == status, (method, path, response.status, data.get("code"), data.get("msg"))
-            assert set(data) == {"code", "msg", "data"}
-            assert response.getheader("Cache-Control") == "no-store"
-            if status < 300:
-                assert data["code"] == 0
-            if value and path.endswith("/auth/login") and status == 200:
-                cookies = http.cookies.SimpleCookie(response.getheader("Set-Cookie"))
-                item = cookies["lunaris_session"]
-                assert item["httponly"] and item["samesite"].lower() == "strict" and item["path"] == "/"
-                self.cookie = f"lunaris_session={item.value}"
-                self.csrf = data["data"]["csrf_token"]
-            return data["data"], dict(response.getheaders())
-        finally:
-            conn.close()
-
-
-@contextlib.contextmanager
-def running(binary, root, data_dir, port):
-    log = root / "server.log"
-    with log.open("a") as output:
-        p = subprocess.Popen([binary, "serve", "--data-dir", str(data_dir), "--listen", f"127.0.0.1:{port}"], stdout=output, stderr=output)
-        try:
-            end = time.monotonic() + 15
-            while True:
-                if p.poll() is not None:
-                    raise RuntimeError("management process exited before readiness")
-                try:
-                    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=0.3)
-                    conn.request("GET", "/healthz")
-                    response = conn.getresponse(); response.read(); conn.close()
-                    if response.status == 200:
-                        break
-                except OSError:
-                    pass
-                if time.monotonic() > end:
-                    raise TimeoutError("management readiness")
-                time.sleep(0.03)
-            yield p
-        finally:
-            p.terminate()
-            try:
-                code = p.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                p.kill(); p.wait(); raise RuntimeError("management shutdown timed out")
-            if code != 0:
-                raise RuntimeError(f"management process exit {code}")
+sys.dont_write_bytecode = True
+from management_client import API, free_port, running
 
 
 def main():
@@ -128,8 +53,10 @@ def main():
             api.call("POST", "/api/v1/auth/reauth", {"password": first_password})
             connection, _ = api.call("POST", "/api/v1/listeners/ss/connection-info", {"committed_revision": revision, "host": "127.0.0.1", "credential_ref": "device"})
             assert connection["authentication"]["password"] == proxy_secret
-            template, _ = api.call("GET", "/api/v1/config/template")
-            assert proxy_secret not in template["content"]
+            public, _ = api.call("GET", "/api/v1/config/draft")
+            assert proxy_secret not in json.dumps(public)
+            api.call("GET", "/api/v1/config/template", status=404)
+            api.call("POST", "/api/v1/config/import", {"content": "listeners: []"}, status=404)
         print("PASS process setup, authentication, asset, draft, plan, apply and sensitive export")
         with running(binary, root, state, port):
             api.call("GET", "/api/v1/auth/session")

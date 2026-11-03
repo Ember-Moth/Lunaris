@@ -2,18 +2,15 @@
 package admin
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"strings"
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	ports "github.com/Ember-Moth/Lunaris/internal/store"
 	"github.com/cloudwego/hertz/pkg/app"
-	"go.yaml.in/yaml/v3"
 )
 
 func newDraftInput() model.DraftInput {
@@ -186,66 +183,4 @@ func (a *API) fromRevision(ctx context.Context, c *app.RequestContext) {
 	c.Header("ETag", "\""+saved.ID+"\"")
 	a.audit(ctx, "historical revision copied to draft")
 	reply(c, 200, 0, "ok", saved)
-}
-func (a *API) template(ctx context.Context, c *app.RequestContext) {
-	heads, err := a.repo.Heads(ctx)
-	if err != nil {
-		a.error(c, err, false)
-		return
-	}
-	r, err := a.repo.Revision(ctx, heads.DraftRevision)
-	if err != nil {
-		a.error(c, err, false)
-		return
-	}
-	input := model.DraftInput{Config: r.Config, CredentialAssets: r.CredentialAssets, CertificateAssets: r.CertificateAssets}
-	raw, _ := json.Marshal(input)
-	var document any
-	if err = json.Unmarshal(raw, &document); err != nil {
-		a.error(c, err, false)
-		return
-	}
-	out, err := yaml.Marshal(document)
-	if err != nil {
-		a.error(c, err, false)
-		return
-	}
-	reply(c, 200, 0, "ok", map[string]any{"format": "yaml", "content": string(out), "revision": r.ID})
-}
-func (a *API) importConfig(ctx context.Context, c *app.RequestContext) {
-	expected, ok := a.ifMatch(c)
-	if !ok {
-		return
-	}
-	var request struct {
-		Content           string            `json:"content"`
-		CredentialAssets  map[string]string `json:"credential_assets"`
-		CertificateAssets map[string]string `json:"certificate_assets"`
-	}
-	if !a.decode(ctx, c, &request, 2<<20, false) {
-		return
-	}
-	if len(request.Content) > 1<<20 {
-		a.fail(c, 413, 41300, "Imported YAML exceeds 1 MiB", nil)
-		return
-	}
-	raw, err := templateJSON(request.Content)
-	if err != nil {
-		a.fail(c, 422, 42200, "Invalid or overly complex YAML document", nil)
-		return
-	}
-	input := newDraftInput()
-	jsonDecoder := json.NewDecoder(bytes.NewReader(raw))
-	jsonDecoder.DisallowUnknownFields()
-	if err := jsonDecoder.Decode(&input); err != nil {
-		a.fail(c, 422, 42200, "Invalid template fields; local file and environment references are not accepted", nil)
-		return
-	}
-	if request.CredentialAssets != nil {
-		input.CredentialAssets = request.CredentialAssets
-	}
-	if request.CertificateAssets != nil {
-		input.CertificateAssets = request.CertificateAssets
-	}
-	a.saveDraft(ctx, c, expected, input)
 }

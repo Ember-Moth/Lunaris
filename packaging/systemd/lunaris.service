@@ -1,5 +1,5 @@
 [Unit]
-Description=Lunaris self-hosted proxy node
+Description=Lunaris proxy node and management API
 After=network-online.target
 Wants=network-online.target
 
@@ -9,12 +9,10 @@ DynamicUser=true
 StateDirectory=lunaris
 StateDirectoryMode=0700
 WorkingDirectory=/var/lib/lunaris
-EnvironmentFile=-/etc/lunaris/secrets.env
-ExecStart=/usr/local/bin/lunaris run --config /etc/lunaris/node.yaml
-ExecReload=/bin/kill -HUP $MAINPID
+ExecStart=/usr/local/bin/lunaris-web serve --config /etc/lunaris/bootstrap.yaml
 Restart=on-failure
 RestartSec=3
-TimeoutStopSec=10
+TimeoutStopSec=15
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true

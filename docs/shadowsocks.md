@@ -1,6 +1,6 @@
 # Shadowsocks AEAD：当前实现
 
-状态：P1 协议核心与 P2 文件模式运行管理。使用上游 `sing v0.9.6` 和 `sing-shadowsocks v0.2.9`，没有本地模块替换或 vendor 副本。
+状态：协议核心与 SQLite 管理模式。使用上游 `sing v0.9.6` 和 `sing-shadowsocks v0.2.9`，没有本地模块替换或 vendor 副本。
 
 ## 支持范围
 
@@ -9,7 +9,7 @@
 - 目标 IP 或域名；直接出口。
 - TCP 半关闭、待拨号取消、UDP 多目标会话、空闲回收、启动失败清理和进程退出回收。
 
-支持 SIGHUP 差异重载：凭据或运行参数变化时关闭旧会话并重建受影响实例，失败时尝试恢复原配置。本页描述原生 classic AEAD 的基础实现；后续已接入的 SS2022、多用户、mux/UoT 和[插件](shadowsocks-plugins.md)见[当前协议矩阵](protocols.md)。
+支持通过管理 API 应用或 managed 的 SIGHUP 进行差异重载：凭据或运行参数变化时关闭旧会话并重建受影响实例，失败时尝试恢复原配置。本页描述原生 classic AEAD 的基础实现；后续已接入的 SS2022、多用户、mux/UoT 和[插件](shadowsocks-plugins.md)见[当前协议矩阵](protocols.md)。
 
 ## 协议与产品职责
 
@@ -19,7 +19,7 @@ Lunaris 不调用上游 service 中的旧 UDP 会话缓存，自己在 sing `Pac
 
 ## 资源边界
 
-`examples/shadowsocks.yaml` 给出可配置的握手/拨号/空闲/关闭超时、活动连接、待认证握手、UDP 会话、每会话队列数量和目标数量。UDP 只接收该会话实际联系过的目标端点的响应。
+`examples/shadowsocks.json` 给出可配置的握手/拨号/空闲/关闭超时、活动连接、待认证握手、UDP 会话、每会话队列数量和目标数量。UDP 只接收该会话实际联系过的目标端点的响应。
 
 额外固定边界：每个监听器的 UDP 待转发载荷合计最多 16 MiB；数据报入队前缩小接收缓冲，避免每个小包都保留 64 KiB。队列或字节预算用尽时丢弃新 UDP 数据报；关闭会话释放所有待处理缓冲。
 

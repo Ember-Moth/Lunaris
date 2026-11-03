@@ -3,7 +3,7 @@
 """Loopback interop with an independently supplied sing-box release binary.
 
 Requires Python 3 and openssl; never downloads software or changes system routing.
-Usage: python3 scripts/test-interop.py --client /path/to/sing-box --server bin/lunaris
+Usage: python3 scripts/test-interop.py --client /path/to/sing-box --server bin/lunaris-web
 """
 import argparse
 import contextlib
@@ -15,7 +15,11 @@ import struct
 import subprocess
 import tempfile
 import threading
+import sys
 import time
+
+sys.dont_write_bytecode = True
+from management_client import managed_node
 
 UUID = "c8820ed3-e4ee-47ad-a5bd-ece70763e32c"
 PASSWORD = "lunaris-disposable-interop-password"
@@ -70,6 +74,19 @@ class EchoTCP(socketserver.BaseRequestHandler):
             self.request.sendall(data)
 
 
+class EchoTLS(EchoTCP):
+    def handle(self):
+        # Handshake in the worker, not the accept loop: REALITY probes open
+        # several connections concurrently and repeat after node restarts.
+        self.request.settimeout(5)
+        try:
+            with self.server.tls_context.wrap_socket(self.request, server_side=True) as secure:
+                self.request = secure
+                super().handle()
+        except OSError:
+            pass
+
+
 class EchoUDP(socketserver.BaseRequestHandler):
     def handle(self):
         data, sock = self.request
@@ -110,7 +127,7 @@ def ready(child, port):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client", type=pathlib.Path, required=True)
-    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris"))
+    parser.add_argument("--server", type=pathlib.Path, default=pathlib.Path("bin/lunaris-web"))
     args = parser.parse_args()
     client, server = str(args.client.resolve()), str(args.server.resolve())
     subprocess.run([client, "version"], check=True)
@@ -132,8 +149,7 @@ def main():
             ports.add(value)
             return value
         scenarios = [(kind, carrier, secure, port()) for kind, carrier, secure in matrix]
-        node = root / "node.yaml"
-        text = f"schema_version: 1\ncertificates:\n  - id: tls\n    certificate_file: cert.pem\n    private_key_file: key.pem\ncredentials:\n  - id: uuid\n    secret: {UUID}\n  - id: password\n    secret: {PASSWORD}\nlisteners:\n"
+        listeners = []
         for index, (kind, carrier, secure, endpoint) in enumerate(scenarios):
             ref = "uuid" if kind in ("vless", "vmess") else "password"
             transport = {"type": carrier}
@@ -142,14 +158,10 @@ def main():
             options = {"users": [{"uuid": UUID, "credential_ref": ref}]} if kind == "tuic" else {}
             if kind == "shadowsocks":
                 options = {"method": "aes-128-gcm"}
-            text += f"  - id: test-{index}\n    protocol: {kind}\n    address: 127.0.0.1\n    port: {endpoint}\n    credential_refs: [{ref}]\n    options: {json.dumps(options)}\n"
-            if carrier != "native":
-                text += f"    transport: {json.dumps(transport)}\n"
+            listener = {"id": f"test-{index}", "protocol": kind, "address": "127.0.0.1", "port": endpoint, "credential_refs": [ref], "options": options, "transport": transport}
             if secure:
-                text += "    certificate_ref: tls\n"
-        node.write_text(text)
-        node.chmod(0o600)
-        subprocess.run([server, "check", "--config", str(node)], check=True)
+                listener["certificate_ref"] = "tls"
+            listeners.append(listener)
         tcp = socketserver.ThreadingTCPServer(("127.0.0.1", 0), EchoTCP)
         tcp.daemon_threads = True
         udp = socketserver.UDPServer(("127.0.0.1", 0), EchoUDP)
@@ -157,7 +169,7 @@ def main():
             threading.Thread(target=echo.serve_forever, daemon=True).start()
             stack.callback(echo.server_close)
             stack.callback(echo.shutdown)
-        node_process = stack.enter_context(process([server, "run", "--config", str(node)], root / "node.log"))
+        node_process = stack.enter_context(managed_node(server, root, listeners=listeners, credentials={"uuid": UUID, "password": PASSWORD}, certificates={"tls": (cert, key)}))
         ready(node_process, scenarios[0][3])
         for kind, carrier, secure, endpoint in scenarios:
             outbound = {"type": kind, "tag": "proxy", "server": "127.0.0.1", "server_port": endpoint}

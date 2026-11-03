@@ -18,8 +18,8 @@ build:
 build-web: web
 	go build -tags '$(GO_BUILD_TAGS),webui' -trimpath -o bin/lunaris-web .
 
-dev:
-	go run -tags '$(GO_BUILD_TAGS)' . run --config examples/shadowsocks.yaml
+dev: web
+	go run -tags '$(GO_BUILD_TAGS),webui' . serve --config config.example.yaml
 
 check:
 	sh scripts/check-modules.sh
