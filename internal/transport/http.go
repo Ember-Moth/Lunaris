@@ -149,6 +149,7 @@ func configuredHTTP3Binding(handler http.Handler, timeout time.Duration, setting
 			if settings.onConnection != nil {
 				settings.onConnection(c)
 			}
+			ctx = ingress.WithPeer(ctx, c.RemoteAddr())
 			ctx = context.WithValue(ingress.WithLocal(ctx, c.LocalAddr()), http.LocalAddrContextKey, c.LocalAddr())
 			timer := time.AfterFunc(timeout, func() { _ = c.CloseWithError(0, "authentication timeout") })
 			context.AfterFunc(c.Context(), func() { timer.Stop() })

@@ -6,16 +6,17 @@ package native
 import (
 	"crypto/rand"
 	"errors"
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"net"
 	"net/netip"
-	"sync/atomic"
 	"time"
 )
 
 type packetSessionKey struct {
-	local  packetRemoteKey
-	remote packetRemoteKey
-	id     uint32
+	credential [32]byte
+	local      packetRemoteKey
+	remote     packetRemoteKey
+	id         uint32
 }
 
 type packetRemoteKey struct {
@@ -45,7 +46,8 @@ type remoteCipher struct {
 	user     *compiledUser
 	aead     cipherAEAD
 	key      packetRemoteKey
-	sessions atomic.Int64
+	sessions int
+	epoch    int64
 }
 
 type localPacketConn interface {
@@ -81,7 +83,7 @@ func (s *Server) listenPacket() {
 			continue
 		}
 		remoteKey := remoteKeyFrom(remote)
-		key := packetSessionKey{remote: remoteKey, local: remoteKeyFrom(local), id: seg.meta.sessionID}
+		key := packetSessionKey{credential: match.user.credential, remote: remoteKey, local: remoteKeyFrom(local), id: seg.meta.sessionID}
 		value, loaded := s.packetSessions.Load(key)
 		if !loaded {
 			if seg.meta.protocol != openSessionRequest || seg.meta.sessionID == 0 || match.user == nil {
@@ -90,9 +92,11 @@ func (s *Server) listenPacket() {
 			if !s.users.Load().active(match.user) {
 				continue
 			}
-			if s.replay.seen(packet[:nonceSize], remote) {
+			if s.replay.seen(match.user.credential, packet[:nonceSize]) {
+				match.verdict.Reject()
 				continue
 			}
+			match.verdict.Accept()
 			if !s.reserveSession() {
 				continue
 			}
@@ -100,16 +104,7 @@ func (s *Server) listenPacket() {
 			if mtu <= 0 {
 				mtu = defaultMTU
 			}
-			state := &remoteCipher{user: match.user, aead: match.aead, key: remoteKey}
-			if existing, present := s.remoteCiphers.LoadOrStore(remoteKey, state); present {
-				candidate := existing.(*remoteCipher)
-				if candidate.user == match.user {
-					state = candidate
-				} else {
-					s.remoteCiphers.Store(remoteKey, state)
-				}
-			}
-			state.sessions.Add(1)
+			state := s.retainRemoteCipher(remoteKey, match)
 			created := newPacketSession(seg.meta.sessionID, match, s, remote, local, mtu, state)
 			created.slot = true
 			value, loaded = s.packetSessions.LoadOrStore(key, created)
@@ -136,7 +131,7 @@ func (s *Server) listenPacket() {
 			s.releaseSession()
 		}
 		session := value.(*packetSession)
-		if match.user != session.user {
+		if match.user.credential != session.user.credential {
 			continue
 		}
 		if seg.meta.protocol == closeSessionRequest {
@@ -153,15 +148,52 @@ func (s *Server) listenPacket() {
 	}
 }
 
-func (s *Server) parsePacket(packet []byte, remote net.Addr) (segment, userMatch, error) {
+func (s *Server) parsePacket(packet []byte, remote net.Addr) (_ segment, _ userMatch, resultErr error) {
 	encryptedMeta := packet[:packetHeaderSize]
 	var match userMatch
-	if cached, ok := s.remoteCiphers.Load(remoteKeyFrom(remote)); ok {
-		known := cached.(*remoteCipher)
-		plain, err := known.aead.Open(s.packetMetaScratch[:0], encryptedMeta[:nonceSize], encryptedMeta[nonceSize:], nil)
-		if err == nil {
-			match = userMatch{user: known.user, aead: known.aead, text: plain}
+	var knownState *remoteCipher
+	defer func() {
+		if resultErr != nil {
+			match.verdict.Reject()
 		}
+	}()
+	known, recent := s.knownRemoteCiphers(remoteKeyFrom(remote))
+	if len(known) > 0 {
+		try := func(state *remoteCipher) bool {
+			plain, err := state.aead.Open(s.packetMetaScratch[:0], encryptedMeta[:nonceSize], encryptedMeta[nonceSize:], nil)
+			if err != nil {
+				return false
+			}
+			match = userMatch{user: state.user, aead: state.aead, text: plain, epoch: state.epoch}
+			knownState = state
+			return true
+		}
+		scan := s.users.Load().scan
+		peer := ingress.AddressIP(remote)
+		matched := false
+		var err error
+		remaining := len(known)
+		if recent != nil {
+			matched, err = scan.CheckKnown(peer, 1, func() bool { return try(recent) })
+			if err != nil {
+				return segment{}, userMatch{}, err
+			}
+			remaining--
+		}
+		if !matched && remaining > 0 {
+			_, err = scan.CheckKnown(peer, remaining, func() bool {
+				for _, state := range known {
+					if state != recent && try(state) {
+						return true
+					}
+				}
+				return false
+			})
+			if err != nil {
+				return segment{}, userMatch{}, err
+			}
+		}
+
 	}
 	if match.user == nil {
 		var err error
@@ -193,6 +225,9 @@ func (s *Server) parsePacket(packet []byte, remote net.Addr) (segment, userMatch
 	}
 	if len(remaining) != int(meta.suffixLen) {
 		return segment{}, userMatch{}, errors.New("mieru: invalid packet suffix")
+	}
+	if knownState != nil {
+		s.rememberRemoteCipher(knownState)
 	}
 	return segment{meta: meta, payload: payload}, match, nil
 }

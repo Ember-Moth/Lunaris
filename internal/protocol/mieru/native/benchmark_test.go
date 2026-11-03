@@ -4,6 +4,7 @@
 package native
 
 import (
+	"github.com/Ember-Moth/Lunaris/internal/authscan"
 	"net"
 	"testing"
 	"time"
@@ -129,6 +130,7 @@ func BenchmarkDiscoverCachedUser(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	prepared.snapshot.scan = authscan.NewSelector(authscan.HashAddr, authscan.GuardOptions{WorkRate: 1 << 50, Concurrent: 1024})
 	target := prepared.snapshot.users[len(prepared.snapshot.users)-1]
 	keys, _ := target.keysAt(time.Now())
 	meta := metadata{protocol: openSessionRequest, sessionID: 1}
@@ -137,9 +139,11 @@ func BenchmarkDiscoverCachedUser(b *testing.B) {
 		b.Fatal(err)
 	}
 	remote := &net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 12345}
-	if _, err = prepared.snapshot.discover(packet[:packetHeaderSize], make([]byte, 0, metadataLength), remote); err != nil {
+	initialMatch, err := prepared.snapshot.discover(packet[:packetHeaderSize], make([]byte, 0, metadataLength), remote)
+	if err != nil {
 		b.Fatal(err)
 	}
+	initialMatch.verdict.Accept()
 	var scratch [metadataLength]byte
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -159,6 +163,7 @@ func BenchmarkDiscoverRegistryHint1K(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	prepared.snapshot.scan = authscan.NewSelector(authscan.HashAddr, authscan.GuardOptions{WorkRate: 1 << 50, Concurrent: 1024})
 	target := prepared.snapshot.users[len(prepared.snapshot.users)-1]
 	keys, _ := target.keysAt(time.Now())
 	packet, err := sealPacket(nil, metadata{protocol: openSessionRequest, sessionID: 1}, nil, keys.aead[1], target.name)
@@ -180,6 +185,7 @@ func BenchmarkDiscoverCachedUserParallel(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	prepared.snapshot.scan = authscan.NewSelector(authscan.HashAddr, authscan.GuardOptions{WorkRate: 1 << 50, Concurrent: 1024})
 	target := prepared.snapshot.users[0]
 	keys, _ := target.keysAt(time.Now())
 	packet, err := sealPacket(nil, metadata{protocol: openSessionRequest, sessionID: 1}, nil, keys.aead[1], target.name)
@@ -188,9 +194,11 @@ func BenchmarkDiscoverCachedUserParallel(b *testing.B) {
 	}
 	remote := &net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 12345}
 	var initial [metadataLength]byte
-	if _, err = prepared.snapshot.discover(packet[:packetHeaderSize], initial[:0], remote); err != nil {
+	initialMatch, err := prepared.snapshot.discover(packet[:packetHeaderSize], initial[:0], remote)
+	if err != nil {
 		b.Fatal(err)
 	}
+	initialMatch.verdict.Accept()
 	b.ReportAllocs()
 	b.RunParallel(func(parallel *testing.PB) {
 		var scratch [metadataLength]byte
@@ -244,7 +252,7 @@ func BenchmarkPreparedInstall10K(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		snapshot := *prepared.snapshot
-		snapshot.cache = newSourceCache()
+		snapshot.scan = newAuthSelector()
 		benchmarkSnapshot = &snapshot
 	}
 }

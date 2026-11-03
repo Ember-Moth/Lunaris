@@ -216,3 +216,15 @@ UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadows
 - [x] 独立 sing-box 的 TCP/UDP 矩阵、混合出口、连接隔离及重启/备份恢复。
 
 协议种类与传输/扩展选项的范围分别记录于[代理出站](outbounds.md)，不把现有入站组合标为出站支持。
+
+
+## Polaris authscan 与多用户认证
+
+- [x] 有界候选缓存、扫描工作/并发预算、失败退避及完整认证后提交缓存。
+- [x] classic AEAD TCP/UDP 多用户、VMess AEAD、Mieru hint/epoch 路径、Snell v5/v6 加密模式。
+- [x] 用户隔离回包、重放拒绝、凭据快照替换、慢握手不占扫描槽、物理对端来源传递。
+- [x] 完整 vet/race、独立客户端多用户互通、Mieru 受控丢包及 Linux 双架构交叉编译。
+
+配置、冷扫描仍为 O(n) 的边界、Snell unsafe-raw 例外和验证记录见 [authscan](authscan.md)。
+
+- [x] authscan 审计六项修复：Mieru 重放/缓存/会话隔离、classic AEAD UDP 反射、VMess 完整有效期防重放、Snell 长头缓存退避；原始七个复现及对应永久回归通过。

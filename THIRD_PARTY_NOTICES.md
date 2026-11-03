@@ -44,7 +44,13 @@ Lunaris changes adapt the host listener and context integration, use released Sa
 
 ## Snell
 
-The node directly links [SagerNet/sing-snell](https://github.com/SagerNet/sing-snell/tree/bc5a12ac736f), version `v0.0.0-20260904135315-bc5a12ac736f` (GPL-3.0-or-later). It does not copy Polaris's modified sing-snell module.
+The node directly links [SagerNet/sing-snell](https://github.com/SagerNet/sing-snell/tree/bc5a12ac736f), version `v0.0.0-20260904135315-bc5a12ac736f` (GPL-3.0-or-later). The v5 server files in `internal/protocol/snell/native5` are adapted from this pinned source, retaining [LICENSE](internal/protocol/snell/native5/LICENSE) and [MODIFICATIONS](internal/protocol/snell/native5/MODIFICATIONS.md). The adapter shares one credential-separated replay filter across users. Crypto, obfuscation and v6 services remain external module APIs.
+
+`internal/protocol/snell/probe` contains the v6 profile/salt recognition subset from Polaris `56d52fb44958ef3cc2a7fb841cd240f8206234b2` (GPL-3.0-or-later, Copyright (C) 2026 Polaris contributors); record encoding stays upstream.
+
+## Polaris authentication scan protection
+
+The cache, guard and their source tests in `internal/authscan` are adapted from `pkg/sagernet/sing/common/authscan` at Polaris `56d52fb44958ef3cc2a7fb841cd240f8206234b2` (GPL-3.0-or-later, Copyright (C) 2026 Polaris contributors). Lunaris adds tentative matches, full-authentication cache commits, cached-candidate work accounting and I/O-free CPU permit lifetimes. The GPL text is retained in [LICENSE](LICENSE); new adapters carry GPL-3.0-only headers.
 
 ## Polaris native Mieru and ShadowsocksR
 

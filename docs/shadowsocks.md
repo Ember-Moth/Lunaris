@@ -5,7 +5,7 @@
 ## 支持范围
 
 - `aes-128-gcm`、`aes-256-gcm`、`chacha20-ietf-poly1305`。
-- TCP 和 UDP，可分别启用；一个监听器对应一份密码，支持多个监听器。
+- TCP 和 UDP，可分别启用；一个监听器可配置多个不同密码，各用户共用监听端口。
 - 目标 IP 或域名；直接出口。
 - TCP 半关闭、待拨号取消、UDP 多目标会话、空闲回收、启动失败清理和进程退出回收。
 
@@ -13,9 +13,11 @@
 
 ## 协议与产品职责
 
-TCP 使用上游的 Shadowsocks service 解析和认证，再交给统一的 sing TCP handler。UDP 复用上游 AEAD packet codec；classic AEAD 每个 UDP 数据报独立加密，入站与出站采用相同的盐、子密钥与地址封装格式。[Shadowsocks AEAD 规范](https://shadowsocks.org/doc/aead.html)。
+TCP 使用 authscan 选择候选凭据后，由上游 Shadowsocks service 完成解析和认证，再交给统一的 sing TCP handler。UDP 复用上游 AEAD packet codec；classic AEAD 每个 UDP 数据报独立加密，入站与出站采用相同的盐、子密钥与地址封装格式。[Shadowsocks AEAD 规范](https://shadowsocks.org/doc/aead.html)。
 
 Lunaris 不调用上游 service 中的旧 UDP 会话缓存，自己在 sing `PacketConn`、`buf.Buffer`、`pipe.Deadline` 接口上组合会话和队列。这样可以明确限制排队和关闭时的缓冲区所有权，无需修改上游代码。
+
+同端口多用户直接在 `credential_refs` 中列出各用户凭据，不设置 `server_key_ref`。TCP 按物理来源 IP 缓存候选，UDP 按来源 IP/端口缓存；UDP 会话键包含用户，回包使用该用户密钥。详细限制见 [authscan](authscan.md)。
 
 ## 资源边界
 
@@ -23,7 +25,7 @@ Lunaris 不调用上游 service 中的旧 UDP 会话缓存，自己在 sing `Pac
 
 额外固定边界：每个监听器的 UDP 待转发载荷合计最多 16 MiB；数据报入队前缩小接收缓冲，避免每个小包都保留 64 KiB。队列或字节预算用尽时丢弃新 UDP 数据报；关闭会话释放所有待处理缓冲。
 
-经过认证的 TCP/UDP salt 使用 60 秒的内存重放窗口，最多保留 65,536 个条目；窗口满时拒绝新条目直到旧条目过期。此边界也会限制高包速 UDP 场景，当前不宣称完成高吞吐调优。窗口属于实例内存，监听器重建（包括失败恢复）或进程重启会重置它；未重建的实例保留该状态。
+经过认证的 TCP/UDP 入站 salt 与 UDP 回包 salt 共用按用户隔离的 60 秒内存重放窗口，最多保留 65,536 个条目；UDP 回包在发出前登记 salt，避免被反射成新请求；正常 UDP 往返通常占用两个条目。窗口满时拒绝新条目直到旧条目过期。此边界也会限制高包速 UDP 场景，当前不宣称完成高吞吐调优。窗口属于实例内存，监听器重建（包括失败恢复）或进程重启会重置它；未重建的实例保留该状态。
 
 ## 验证范围
 

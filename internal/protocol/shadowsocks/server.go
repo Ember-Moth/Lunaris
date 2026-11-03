@@ -2,16 +2,20 @@
 package shadowsocks
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"github.com/Ember-Moth/Lunaris/internal/authscan"
+	"github.com/sagernet/sing/common/auth"
+	"io"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 
 	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
-	SS "github.com/sagernet/sing-shadowsocks"
 	"github.com/sagernet/sing-shadowsocks/shadowaead"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
@@ -26,7 +30,9 @@ type Server struct {
 	limits      model.Limits
 	handler     protocol.RelayHandler
 	method      *shadowaead.Method
-	service     SS.Service
+	users       []compiledUser
+	tcpScan     *authscan.Selector[netip.Addr]
+	udpScan     *authscan.Selector[netip.AddrPort]
 	saltSize    int
 	replay      saltWindow
 	mu          sync.Mutex
@@ -80,9 +86,24 @@ func (s *Server) ClosePacket(ctx context.Context) error {
 type handshakeKey struct{}
 
 func (s *Server) ServeStream(ctx context.Context, c net.Conn, src M.Socksaddr, onClose N.CloseHandlerFunc) error {
-	captured := &saltConn{Conn: c, size: s.saltSize}
+	header := make([]byte, s.saltSize+18)
+	if _, err := io.ReadFull(c, header); err != nil {
+		return err
+	}
+	match, err := s.tcpScan.Find(ingress.PeerIP(ctx, c.RemoteAddr()), len(s.users), func(index int) bool {
+		return s.users[index].checkHeader(header[:s.saltSize], header[s.saltSize:])
+	})
+	if err != nil {
+		return err
+	}
+	captured := &saltConn{Conn: authscan.ReplayPrefix(c, header), size: s.saltSize, match: match, user: match.Index}
 	ctx = context.WithValue(ctx, handshakeKey{}, captured)
-	err := s.service.NewConnection(ctx, captured, M.Metadata{Source: src})
+	ctx = auth.ContextWithUser(ctx, s.users[match.Index].ref)
+	err = s.users[match.Index].service.NewConnection(ctx, captured, M.Metadata{Source: src})
+	if authscan.Rejected(err) {
+		match.Reject()
+	}
+
 	if onClose != nil {
 		onClose(err)
 	}
@@ -91,9 +112,10 @@ func (s *Server) ServeStream(ctx context.Context, c net.Conn, src M.Socksaddr, o
 
 func (s *Server) NewConnection(ctx context.Context, connection net.Conn, metadata M.Metadata) error {
 	state, ok := ctx.Value(handshakeKey{}).(*saltConn)
-	if !ok || !s.replay.accept(state.salt[:state.count]) {
+	if !ok || state.count != s.saltSize || !s.replay.accept(s.replayKey(state.user, state.salt[:state.count])) {
 		return errors.New("replayed or invalid Shadowsocks handshake")
 	}
+	state.match.Accept()
 	done := make(chan error, 1)
 	s.handler.NewConnectionEx(ctx, connection, metadata.Source, metadata.Destination, N.OnceClose(func(err error) { done <- err }))
 	return <-done
@@ -108,6 +130,8 @@ func (s *Server) NewError(context.Context, error) {}
 
 type saltConn struct {
 	net.Conn
+	match       *authscan.Match[netip.Addr]
+	user        int
 	salt        [32]byte
 	size, count int
 }
@@ -175,17 +199,30 @@ func (s *Server) readUDP() error {
 		}
 		var salt [32]byte
 		copy(salt[:], buffer.To(s.saltSize))
-		packet := buffer.Bytes()
-		buffer.Truncate(0)
-		decoder := s.method.DialPacketConn(&datagramConn{packet: packet})
-		destination, err := decoder.ReadPacket(buffer)
-		if err != nil || destination.Port == 0 || !s.replay.accept(salt[:s.saltSize]) {
+		// Each candidate gets the original ciphertext; AEAD failure may overwrite
+		// its destination buffer. Keep the receive copy separate from decoder output.
+		packet := bytes.Clone(buffer.Bytes())
+		source := M.SocksaddrFromNet(remote).Unwrap().AddrPort()
+		localEndpoint := M.SocksaddrFromNet(local).Unwrap().AddrPort()
+		var destination M.Socksaddr
+		match, err := s.udpScan.Find(source, len(s.users), func(index int) bool {
+			buffer.Resize(0, 0)
+			decoder := s.users[index].method.DialPacketConn(&datagramConn{packet: packet})
+			var decodeErr error
+			destination, decodeErr = decoder.ReadPacket(buffer)
+			return decodeErr == nil && destination.Port != 0
+		})
+		if err != nil {
 			buffer.Release()
 			continue
 		}
-		source := M.SocksaddrFromNet(remote).Unwrap().AddrPort()
-		localEndpoint := M.SocksaddrFromNet(local).Unwrap().AddrPort()
-		key := packetSessionKey{source, localEndpoint}
+		if !s.replay.accept(s.replayKey(match.Index, salt[:s.saltSize])) {
+			match.Reject()
+			buffer.Release()
+			continue
+		}
+		match.Accept()
+		key := packetSessionKey{source: source, local: localEndpoint, user: match.Index}
 		s.mu.Lock()
 		if s.stopped {
 			s.mu.Unlock()
@@ -201,6 +238,8 @@ func (s *Server) readUDP() error {
 				continue
 			}
 			session = newPacketSession(s, source, localEndpoint)
+			session.user = match.Index
+			session.method = s.users[match.Index].method
 			s.sessions[key] = session
 			s.wg.Add(1)
 			created = true
@@ -212,7 +251,7 @@ func (s *Server) readUDP() error {
 		buffer.Release()
 		session.offer(payload, destination)
 		if created {
-			s.handler.NewPacketConnectionEx(ingress.WithLocal(s.ctx, local), session, M.SocksaddrFromNetIP(source), destination, N.OnceClose(func(error) { session.Close(); s.wg.Done() }))
+			s.handler.NewPacketConnectionEx(auth.ContextWithUser(ingress.WithLocal(s.ctx, local), s.users[match.Index].ref), session, M.SocksaddrFromNetIP(source), destination, N.OnceClose(func(error) { session.Close(); s.wg.Done() }))
 		}
 	}
 }

@@ -204,6 +204,7 @@ func (s *socketServer) serve(ctx context.Context, c net.Conn) {
 		return
 	}
 	ctx = ingress.WithLocal(ctx, carrier.LocalAddr())
+	ctx = ingress.WithPeer(ctx, carrier.raw.RemoteAddr())
 	if s.handshake != nil {
 		wrapped, err := s.handshake(ctx, c)
 		if err != nil {
@@ -233,7 +234,9 @@ func (s *socketServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	s.upgrade(s, w, r.WithContext(ingress.WithLocal(r.Context(), r.Context().Value(carrierKey{}).(*trackedConn).LocalAddr())))
+	carrier := r.Context().Value(carrierKey{}).(*trackedConn)
+	ctx := ingress.WithPeer(ingress.WithLocal(r.Context(), carrier.LocalAddr()), carrier.raw.RemoteAddr())
+	s.upgrade(s, w, r.WithContext(ctx))
 }
 
 func headerToken(v, want string) bool {

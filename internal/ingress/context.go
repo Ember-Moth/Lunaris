@@ -11,6 +11,26 @@ import (
 
 type localKey struct{}
 type pendingKey struct{}
+type peerKey struct{}
+
+// WithPeer retains the socket peer separately from untrusted PROXY addresses.
+func WithPeer(ctx context.Context, address net.Addr) context.Context {
+	return WithPeerIP(ctx, AddressIP(address))
+}
+
+func WithPeerIP(ctx context.Context, ip netip.Addr) context.Context {
+	if _, ok := ctx.Value(peerKey{}).(netip.Addr); ok {
+		return ctx
+	}
+	return context.WithValue(ctx, peerKey{}, ip.Unmap())
+}
+
+func PeerIP(ctx context.Context, fallback net.Addr) netip.Addr {
+	if ip, ok := ctx.Value(peerKey{}).(netip.Addr); ok {
+		return ip
+	}
+	return AddressIP(fallback)
+}
 
 // LocalSlot attaches the physical endpoint when QUIC accepts a connection.
 // Stream contexts inherit this slot even when the protocol uses a service context.

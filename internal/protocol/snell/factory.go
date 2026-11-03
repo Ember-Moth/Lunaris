@@ -13,7 +13,6 @@ import (
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/transport"
 	upstream "github.com/sagernet/sing-snell"
-	"github.com/sagernet/sing-snell/snellv5"
 	"github.com/sagernet/sing-snell/snellv6"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -60,8 +59,11 @@ func parse(s model.ListenerSpec) (Options, error) {
 			return o, errors.New("invalid Snell v6 mode")
 		}
 	}
-	if len(s.CredentialRefs) != 1 {
-		return o, errors.New("Snell requires exactly one PSK credential per listener")
+	if len(s.CredentialRefs) == 0 {
+		return o, errors.New("Snell requires at least one PSK credential")
+	}
+	if o.Version == 6 && o.Mode == "unsafe-raw" && len(s.CredentialRefs) != 1 {
+		return o, errors.New("Snell unsafe-raw carries no credentials and cannot select multiple PSKs")
 	}
 	return o, nil
 }
@@ -76,14 +78,22 @@ func (Factory) ValidateAssets(r protocol.ResolvedListenerSpec) error {
 	if err != nil {
 		return err
 	}
-	length := len(r.Credentials[r.Spec.CredentialRefs[0]])
 	minimum := 1
 	if o.Version == 6 {
 		minimum = 12
 	}
-	if length < minimum || length > 255 {
-		return errors.New("Snell PSK length is invalid: v5 requires 1..255 bytes, v6 requires 12..255 bytes")
+	seen := make(map[string]bool)
+	for _, ref := range r.Spec.CredentialRefs {
+		secret := r.Credentials[ref]
+		if len(secret) < minimum || len(secret) > 255 {
+			return errors.New("Snell PSK length is invalid: v5 requires 1..255 bytes, v6 requires 12..255 bytes")
+		}
+		if seen[string(secret)] {
+			return errors.New("duplicate Snell PSK")
+		}
+		seen[string(secret)] = true
 	}
+
 	return nil
 }
 func (f Factory) Build(r protocol.ResolvedListenerSpec, d protocol.Dependencies) (transport.Binding, error) {
@@ -97,20 +107,18 @@ func (f Factory) Build(r protocol.ResolvedListenerSpec, d protocol.Dependencies)
 	if err = f.ValidateAssets(r); err != nil {
 		return transport.Binding{}, err
 	}
-	handler := streamBoundary{next: d.Handler}
-	psk := bytes.Clone(r.Credentials[r.Spec.CredentialRefs[0]])
-	var service upstream.Service
-	if o.Version == 6 {
-		mode, _ := snellv6.ParseMode(o.Mode)
-		service, err = snellv6.NewService(snellv6.ServerOptions{PSK: psk, Mode: mode, Handler: handler})
-	} else {
-		obfs, _ := upstream.ParseObfsMode(o.Obfs)
-		service, err = snellv5.NewService(snellv5.ServiceOptions{PSK: psk, ObfsMode: obfs, Handler: handler})
+	if o.Version == 6 && o.Mode == "unsafe-raw" {
+		service, err := snellv6.NewService(snellv6.ServerOptions{PSK: bytes.Clone(r.Credentials[r.Spec.CredentialRefs[0]]), Mode: snellv6.ModeUnsafeRaw, Handler: streamBoundary{next: d.Handler}})
+		if err != nil {
+			return transport.Binding{}, err
+		}
+		return transport.Binding{Stream: &transport.StreamHandler{Serve: service.NewConnection}}, nil
 	}
+	s, err := newServer(r, d.Handler, o)
 	if err != nil {
 		return transport.Binding{}, err
 	}
-	return transport.Binding{Stream: &transport.StreamHandler{Serve: service.NewConnection}}, nil
+	return transport.Binding{Stream: &transport.StreamHandler{Serve: s.serve}}, nil
 }
 
 // sing-snell's buffer/vector writer expects caller-owned headroom, including

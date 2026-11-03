@@ -2,7 +2,7 @@
 
 配置通过 JSON API 保存为 SQLite 草稿；完整请求结构与资产 ID 替换方法见[示例说明](../examples/README.md)。下方局部片段按字段合入对应监听器。
 
-状态：2026-11-01，已接入十一类节点协议，Shadowsocks 同时支持 classic AEAD 与 2022。所有协议共用 sing 转发与运行管理；直接依赖上游 Go modules，不使用 sing-box 模块、本地 vendor 或本地 replace。P5 HTTP 管理 API 已接入，Web 表单留待 P6。
+状态：2026-11-02，已接入十一类节点协议，Shadowsocks 同时支持 classic AEAD 与 2022。所有协议共用 sing 转发与运行管理；直接依赖上游 Go modules，不使用 sing-box 模块、本地 vendor 或本地 replace。P5 HTTP 管理 API 已接入，Web 表单留待 P6。
 
 ## 支持矩阵
 
@@ -10,9 +10,9 @@
 
 | 协议 | `network` | `transport.type` | TLS | 转发 | 凭据 |
 | --- | --- | --- | --- | --- | --- |
-| Shadowsocks classic AEAD | 原生 TCP/UDP；插件按载体 | `native` 或[插件](shadowsocks-plugins.md) | 按插件 | TCP、原生 UDP / UoT | 每监听器一个密码 |
+| Shadowsocks classic AEAD | 原生 TCP/UDP；插件按载体 | `native` 或[插件](shadowsocks-plugins.md) | 按插件 | TCP、原生 UDP / UoT | 每监听器一个或多个密码 |
 | Shadowsocks 2022 | 原生 TCP/UDP；插件按载体 | `native` 或[插件](shadowsocks-plugins.md) | 按插件 | TCP、原生 UDP / UoT | 单用户密钥；AES 支持多用户 |
-| Snell v5/v6 | TCP | `tcp` | 使用协议自身格式 | TCP、UDP | 每监听器一个 PSK |
+| Snell v5/v6 | TCP | `tcp` | 使用协议自身格式 | TCP、UDP | 一个或多个 PSK；unsafe-raw 限单个 |
 | Mieru v3 | TCP / UDP | `native` | 使用协议自身加密 | TCP、UDP | 用户名与密码映射 |
 | ShadowsocksR | TCP / UDP | `native` | 使用选定 cipher/obfs | TCP、UDP | 单用户或 UID/密码映射 |
 | Naive | TCP 或 UDP | `http` 或 `quic` | 必须 | TCP、UDP（UoT） | 用户名与密码映射 |

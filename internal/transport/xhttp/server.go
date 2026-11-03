@@ -414,5 +414,9 @@ func (server *Server) requestFlow(request *http.Request) (context.Context, net.A
 	if local == nil {
 		local = M.Socksaddr{}
 	}
-	return ingress.WithLocal(server.ctx, local), local
+	ctx := ingress.WithLocal(server.ctx, local)
+	// The session outlives an individual HTTP request, but authentication scan
+	// accounting must retain that request's physical peer across this boundary.
+	ctx = ingress.WithPeerIP(ctx, ingress.PeerIP(request.Context(), sourceAddress(request)))
+	return ctx, local
 }

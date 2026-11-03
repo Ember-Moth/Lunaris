@@ -1,39 +1,41 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Polaris contributors
-
 package native
 
 import (
-	"net"
 	"testing"
 	"time"
 )
 
-func TestReplayCacheSeparatesPacketSources(t *testing.T) {
+func TestReplayCacheSeparatesCredentials(t *testing.T) {
 	cache := newReplayCache(4, time.Minute)
 	nonce := make([]byte, nonceSize)
-	first := &net.UDPAddr{IP: net.ParseIP("192.0.2.1"), Port: 1}
-	second := &net.UDPAddr{IP: net.ParseIP("192.0.2.2"), Port: 1}
-	if cache.seen(nonce, first) || !cache.seen(nonce, first) {
-		t.Fatal("same-source replay was not detected")
+	first, second := [32]byte{1}, [32]byte{2}
+	if cache.seen(first, nonce) || !cache.seen(first, nonce) {
+		t.Fatal("credential replay not rejected")
 	}
-	if cache.seen(nonce, second) {
-		t.Fatal("different packet source was treated as replay")
+	if cache.seen(second, nonce) {
+		t.Fatal("another credential's nonce collided")
 	}
 }
-
-func TestReplayCacheEvictsAtCapacity(t *testing.T) {
+func TestReplayCacheRejectsCapacityWithoutEvictingProtection(t *testing.T) {
 	cache := newReplayCache(2, time.Minute)
-	for value := byte(1); value <= 3; value++ {
+	credential := [32]byte{1}
+	for value := byte(1); value <= 2; value++ {
 		nonce := make([]byte, nonceSize)
 		nonce[0] = value
-		if cache.seen(nonce, nil) {
-			t.Fatal("fresh nonce treated as replay")
+		if cache.seen(credential, nonce) {
+			t.Fatal("fresh nonce rejected")
 		}
+	}
+	third := make([]byte, nonceSize)
+	third[0] = 3
+	if !cache.seen(credential, third) {
+		t.Fatal("over-capacity insertion accepted")
 	}
 	first := make([]byte, nonceSize)
 	first[0] = 1
-	if cache.seen(first, nil) {
-		t.Fatal("oldest nonce was not evicted")
+	if !cache.seen(credential, first) {
+		t.Fatal("still-live replay record evicted")
 	}
 }

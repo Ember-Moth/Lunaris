@@ -2,13 +2,10 @@
 package vmess
 
 import (
-	"errors"
-
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/protocol/stream"
 	"github.com/Ember-Moth/Lunaris/internal/transport"
-	upstream "github.com/sagernet/sing-vmess"
 )
 
 type Factory struct{}
@@ -21,10 +18,13 @@ func (Factory) ValidateAssets(r protocol.ResolvedListenerSpec) error {
 	return stream.ValidateAssets(r, true)
 }
 func (Factory) Build(r protocol.ResolvedListenerSpec, d protocol.Dependencies) (transport.Binding, error) {
-	// Allow fragmented header reads; upstream AEAD and replay checks stay enabled.
-	s := upstream.NewService[string](d.Handler, upstream.ServiceWithDisableHeaderProtection())
-	if err := s.UpdateUsers(r.Spec.CredentialRefs, stream.Passwords(r), make([]int, len(r.Spec.CredentialRefs))); err != nil {
-		return transport.Binding{}, errors.New("invalid VMess users")
+	if err := (Factory{}).ValidateAssets(r); err != nil {
+		return transport.Binding{}, err
 	}
-	return transport.Binding{Stream: &transport.StreamHandler{Serve: s.NewConnection, Start: s.Start, Close: s.Close}}, nil
+	s, err := newServer(r, d.Handler)
+	if err != nil {
+		return transport.Binding{}, err
+	}
+	// AEAD-only users do not require the upstream legacy-key ticker.
+	return transport.Binding{Stream: &transport.StreamHandler{Serve: s.serve}}, nil
 }

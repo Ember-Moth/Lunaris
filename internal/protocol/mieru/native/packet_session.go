@@ -428,7 +428,7 @@ func (s *packetSession) Close() error {
 		meta := s.nextOutbound(closeSessionRequest, 0)
 		_ = s.server.writePacket(meta, nil, s.aead, s.userName, s.remote, s.local)
 		s.closeBuffers()
-		s.server.packetSessions.CompareAndDelete(packetSessionKey{remote: s.remoteKey, local: remoteKeyFrom(s.local), id: s.id}, s)
+		s.server.packetSessions.CompareAndDelete(packetSessionKey{credential: s.user.credential, remote: s.remoteKey, local: remoteKeyFrom(s.local), id: s.id}, s)
 		s.releaseRemoteState()
 		if s.slot {
 			s.server.releaseSession()
@@ -443,7 +443,7 @@ func (s *packetSession) closeRemote() {
 			s.cancel()
 		}
 		s.closeBuffers()
-		s.server.packetSessions.CompareAndDelete(packetSessionKey{remote: s.remoteKey, local: remoteKeyFrom(s.local), id: s.id}, s)
+		s.server.packetSessions.CompareAndDelete(packetSessionKey{credential: s.user.credential, remote: s.remoteKey, local: remoteKeyFrom(s.local), id: s.id}, s)
 		s.releaseRemoteState()
 		if s.slot {
 			s.server.releaseSession()
@@ -457,10 +457,7 @@ func (s *packetSession) releaseRemoteState() {
 		return
 	}
 	s.remoteState = nil
-	if state.sessions.Add(-1) == 0 {
-		s.server.remoteCiphers.CompareAndDelete(state.key, state)
-		s.server.nonceApplied.Delete(packetNonceKey{remote: state.key, user: s.userName})
-	}
+	s.server.releaseRemoteCipher(state)
 }
 
 func (s *packetSession) LocalAddr() net.Addr  { return s.local }

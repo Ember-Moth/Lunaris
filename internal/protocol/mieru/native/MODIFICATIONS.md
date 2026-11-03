@@ -30,3 +30,8 @@ paths relative to this directory. Append new entries at the end of this list.
 - 2026-10-29: Moved the module path from `github.com/Anti-EntropyTech/sing-mieru` to `github.com/perfect-panel/sing-mieru` and updated the imports of its own packages; `go.mod`, `mieru.go`.
 
 - 2026-11-01: Ported into Lunaris from Polaris `56d52fb44958ef3cc2a7fb841cd240f8206234b2`. Removed module-level binding from the runtime path; added managed socket entry points, per-session contexts, carrier/handshake admission, bounded payload accounting, receive-window backpressure, dynamic read deadlines and cleanup tests. Source lives in `internal/protocol/mieru/native`; no enfein/mieru application runtime is linked. Modified by Lunaris contributors.
+
+- Replace the standalone source cache with shared authscan selection, work budgets, concurrency and source backoff. Keep user hints and epoch keys; commit candidates only after packet/stream validation and new-session replay checks.
+
+- Bind replay records to credential identity and nonce, independent of the source endpoint; reject capacity exhaustion instead of evicting live records.
+- Validate the initial client command/session before accepting authentication. Partition UDP sessions by credential and keep independent reference-counted user/epoch decoders for shared endpoints.

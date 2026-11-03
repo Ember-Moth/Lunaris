@@ -329,3 +329,5 @@ Go、Hertz、前端依赖和 sing 系列依赖统一锁版本；sing 必须直�
 首批协议、TCP/TLS、WebSocket、HTTPUpgrade 与 QUIC 组合已实现；后续继续收敛扩展传输和前端视觉方向。React + shadcn/ui、Hertz、GPL-3.0、sing 必选基础、单进程、本机 SQLite、内嵌前端与配置应用模型已有明确设计。
 
 路由/DNS 的当前配置、GeoData 资产和代次回收说明见[路由与解析](routing-dns.md)。
+
+认证扫描复用 `internal/authscan` 的有界候选缓存、CPU 扫描预算和来源退避；classic AEAD、VMess、Mieru 与 Snell 加密模式接入，完整边界见 [authscan](authscan.md)。

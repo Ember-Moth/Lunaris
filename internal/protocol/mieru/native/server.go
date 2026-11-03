@@ -36,7 +36,8 @@ type Server struct {
 	packet            net.PacketConn
 	streams           sync.Map
 	packetSessions    sync.Map
-	remoteCiphers     sync.Map
+	remoteCipherMu    sync.Mutex
+	remoteCiphers     map[packetRemoteKey]*remoteCipherSet
 	ackQueue          chan *packetSession
 	replay            *replayCache
 	packetMetaScratch [metadataLength]byte
@@ -106,7 +107,7 @@ func NewServer(options ServerOptions) (*Server, error) {
 	}
 	snapshot := *prepared.snapshot
 	snapshot.mandatory = options.UserHintIsMandatory
-	snapshot.cache = newSourceCache()
+	snapshot.scan = newAuthSelector()
 	server.users.Store(&snapshot)
 	return server, nil
 }
@@ -160,7 +161,7 @@ func (s *Server) UpdatePreparedUsers(prepared *PreparedUsers) error {
 	}
 	snapshot := *prepared.snapshot
 	snapshot.mandatory = s.option.UserHintIsMandatory
-	snapshot.cache = newSourceCache()
+	snapshot.scan = newAuthSelector()
 	s.users.Store(&snapshot)
 	return nil
 }

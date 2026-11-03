@@ -6,12 +6,12 @@
 
 ## Snell
 
-直接依赖 [SagerNet/sing-snell](https://github.com/SagerNet/sing-snell)，锁定 `bc5a12ac736f`，不复制 Polaris 修改过的 sing-snell。
+依赖 [SagerNet/sing-snell](https://github.com/SagerNet/sing-snell)，锁定 `bc5a12ac736f`。v5 服务端在 `internal/protocol/snell/native5` 保留最小适配副本，用于共享多用户重放过滤器；v6 服务端、密钥派生、obfs 与地址格式继续使用上游模块。v6 凭据形状探测移植自 Polaris。
 
 | 服务端版本 | 客户端 | 选项 | 凭据 |
 | --- | --- | --- | --- |
-| `5`，默认 | v4 兼容客户端 | `obfs: none/http/tls` | 一份 PSK，1–255 字节 |
-| `6` | v6 客户端 | `mode: default/unshaped/unsafe-raw` | 一份 PSK，12–255 字节 |
+| `5`，默认 | v4 兼容客户端 | `obfs: none/http/tls` | 一个或多个 PSK，各 1–255 字节 |
+| `6` | v6 客户端 | `mode: default/unshaped/unsafe-raw` | 一个或多个 PSK，各 12–255 字节；unsafe-raw 限单个 |
 
 ```json
 {
@@ -30,7 +30,7 @@ Snell 监听 TCP，承载 TCP 和协议原生 UDP，包含上游的 TCP 连接�
 
 保留公共 UoT/mux 扩展入口，默认关闭，已用 SDK 客户端覆盖。Snell 的已认证 TCP 流通过标准 net.Conn 接口进入共享处理链，避免上游 vector writer 对控制头部空间的假设，同时保留半关闭和 MTU。UDP 遵循 sing-snell 的帧长约束，本轮独立互通使用小于 1 KiB 的数据报；不将大数据报或 v5 专用 QUIC proxy 模式列为已验证能力。
 
-本轮按上游单 PSK 服务端语义接入，没有导入 Polaris 定制的多 PSK 探测、用户热更新或 Argon2 副本。
+在 `credential_refs` 中列出多个不同 PSK 即启用多用户；它们不是上游共享 PSK 加 ClientID 的身份模型。v5/v6 加密模式接入 [authscan](authscan.md)，v6 default 先检查 PSK 对应的盐填充形状，再做 AEAD 校验。凭据更新沿用监听器差异重建，不提供独立热更新 API；没有引入 Argon2 副本。
 
 ## Mieru
 

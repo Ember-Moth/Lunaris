@@ -2,6 +2,7 @@
 package shadowsocks
 
 import (
+	"errors"
 	"io"
 	"net"
 	"net/netip"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Ember-Moth/Lunaris/internal/ingress"
+	"github.com/sagernet/sing-shadowsocks/shadowaead"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -41,9 +43,14 @@ func (s *Server) releasePacketBytes(n int) {
 
 // packetSession implements sing's PacketConn; queue ownership is explicit and
 // Close releases all queued buffers before it returns. A full queue drops input.
-type packetSessionKey struct{ source, local netip.AddrPort }
+type packetSessionKey struct {
+	source, local netip.AddrPort
+	user          int
+}
 
 type packetSession struct {
+	user     int
+	method   *shadowaead.Method
 	local    netip.AddrPort
 	server   *Server
 	writer   N.PacketWriter
@@ -60,7 +67,7 @@ func newPacketSession(server *Server, source netip.AddrPort, locals ...netip.Add
 	if len(locals) > 0 {
 		local = locals[0]
 	}
-	return &packetSession{server: server, source: source, local: local, queue: make(chan packet, server.limits.UDPQueueSize), done: make(chan struct{}), deadline: pipe.MakeDeadline()}
+	return &packetSession{server: server, method: server.method, source: source, local: local, queue: make(chan packet, server.limits.UDPQueueSize), done: make(chan struct{}), deadline: pipe.MakeDeadline()}
 }
 
 func (c *packetSession) offer(buffer *buf.Buffer, destination M.Socksaddr) {
@@ -109,7 +116,12 @@ func (c *packetSession) WritePacket(buffer *buf.Buffer, destination M.Socksaddr)
 	if c.writer != nil {
 		return c.writer.WritePacket(buffer, destination)
 	}
-	encoder := c.server.method.DialPacketConn(&datagramConn{write: func(packet []byte) (int, error) {
+	encoder := c.method.DialPacketConn(&datagramConn{write: func(packet []byte) (int, error) {
+		// Register before exposing the ciphertext to the network. Classic AEAD
+		// packet framing is symmetric, so a response must not authenticate as input.
+		if len(packet) < c.server.saltSize || !c.server.replay.accept(c.server.replayKey(c.user, packet[:c.server.saltSize])) {
+			return 0, errors.New("Shadowsocks response salt rejected")
+		}
 		c.server.writeMu.Lock()
 		defer c.server.writeMu.Unlock()
 		if err := c.server.udp.SetWriteDeadline(time.Now().Add(c.server.limits.DialTimeout)); err != nil {
@@ -142,8 +154,8 @@ drain:
 	}
 	c.mu.Unlock()
 	c.server.mu.Lock()
-	if c.server.sessions[packetSessionKey{c.source, c.local}] == c {
-		delete(c.server.sessions, packetSessionKey{c.source, c.local})
+	if c.server.sessions[packetSessionKey{source: c.source, local: c.local, user: c.user}] == c {
+		delete(c.server.sessions, packetSessionKey{source: c.source, local: c.local, user: c.user})
 	}
 	c.server.mu.Unlock()
 	return nil

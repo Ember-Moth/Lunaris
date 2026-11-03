@@ -59,6 +59,16 @@ def ready_mihomo(child, port, controller):
     raise RuntimeError("Mihomo proxy/rules readiness timeout")
 
 
+class MieruEchoTCP(socketserver.BaseRequestHandler):
+    # The official client permits 20s per stream; its loss recovery can exceed
+    # the generic echo fixture's 5s idle limit. Keep the target alive until the
+    # client's own bounded deadline decides whether retransmission succeeded.
+    def handle(self):
+        self.request.settimeout(25)
+        while data := self.request.recv(65535):
+            self.request.sendall(data)
+
+
 class LossyUDP:
     """Loopback-only datagram relay dropping every seventh packet each way."""
     def __init__(self, target):
@@ -139,7 +149,7 @@ def main():
     subprocess.run([mihomo, "-v"], check=True)
     with tempfile.TemporaryDirectory(prefix="lunaris-protocols-") as temp, contextlib.ExitStack() as stack:
         root = pathlib.Path(temp)
-        tcp = socketserver.ThreadingTCPServer(("127.0.0.1", 0), base.EchoTCP)
+        tcp = socketserver.ThreadingTCPServer(("127.0.0.1", 0), MieruEchoTCP if args.only in (None, "mieru") else base.EchoTCP)
         udp = socketserver.UDPServer(("127.0.0.1", 0), base.EchoUDP)
         for echo in (tcp, udp):
             echo.daemon_threads = True
@@ -156,13 +166,15 @@ def main():
         listeners, cases = [], []
         for version, obfs, mode in [(5, "none", ""), (5, "http", ""), (5, "tls", ""), (6, "", "default"), (6, "", "unshaped"), (6, "", "unsafe-raw")]:
             endpoint = port()
-            listeners.append({"id": f"snell-{version}-{obfs}-{mode}", "protocol": "snell", "port": endpoint, "credential_refs": ["one"], "options": {"version": version, "obfs": obfs, "mode": mode}})
+            listeners.append({"id": f"snell-{version}-{obfs}-{mode}", "protocol": "snell", "port": endpoint, "credential_refs": ["one"] if mode == "unsafe-raw" else ["one", "two"], "options": {"version": version, "obfs": obfs, "mode": mode}})
             outbound = {"type": "snell", "server": "127.0.0.1", "server_port": endpoint, "version": 4 if version == 5 else 6, "psk": base.PASSWORD, "reuse": True}
             if version == 5 and obfs != "none":
                 outbound["obfs_mode"] = obfs
             if version == 6:
                 outbound["mode"] = mode
-            cases.append(("sing", f"snell/{version}/{obfs or mode}", outbound))
+            cases.append(("sing", f"snell/{version}/{obfs or mode}/user=1", outbound))
+            if mode != "unsafe-raw":
+                cases.append(("sing", f"snell/{version}/{obfs or mode}/user=2", dict(outbound, psk="second-user-password")))
         protocols = ["origin", "auth_sha1_v4", "auth_aes128_md5", "auth_aes128_sha1", "auth_chain_a", "auth_chain_b"]
         ssr_modes = [("aes-128-cfb", protocol, obfs) for protocol in protocols for obfs in ("plain", "http_simple", "http_post", "tls1.2_ticket_auth")]
         ssr_modes += [(cipher, "origin", "plain") for cipher in ("none", "aes-192-cfb", "aes-256-cfb", "aes-128-ctr", "aes-192-ctr", "aes-256-ctr", "rc4-md5", "chacha20", "chacha20-ietf")]
@@ -187,6 +199,8 @@ def main():
             cases.append(("mihomo", f"mieru/{network}", {"name": "node", "type": "mieru", "server": "127.0.0.1", "port": mieru_port, "username": "alice", "password": base.PASSWORD, "transport": network.upper(), "multiplexing": "MULTIPLEXING_HIGH", "udp": True}))
         for item in listeners:
             item["address"] = "127.0.0.1"
+        if args.only:
+            listeners = [item for item in listeners if item["protocol"] == args.only]
         proc = stack.enter_context(base.managed_node(server, root, listeners=listeners, credentials={"one": base.PASSWORD, "two": "second-user-password", "server": "shared-ssr-server-password"}))
         if args.only:
             prefix = "ssr/" if args.only == "shadowsocksr" else args.only + "/"

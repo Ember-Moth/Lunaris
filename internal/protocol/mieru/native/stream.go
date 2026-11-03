@@ -6,9 +6,12 @@ package native
 import (
 	"context"
 	"errors"
+	"github.com/Ember-Moth/Lunaris/internal/authscan"
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"io"
 	"math"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,7 +50,13 @@ func (u *streamUnderlay) run() error {
 	}
 }
 
-func (u *streamUnderlay) readSegment() (segment, error) {
+func (u *streamUnderlay) readSegment() (_ segment, resultErr error) {
+	var verdict *authscan.Match[netip.Addr]
+	defer func() {
+		if verdict != nil && authscan.Rejected(resultErr) {
+			verdict.Reject()
+		}
+	}()
 	first := u.recv.aead == nil
 	if !u.authenticated.Load() {
 		_ = u.conn.SetReadDeadline(u.handshakeDeadline)
@@ -66,14 +75,12 @@ func (u *streamUnderlay) readSegment() (segment, error) {
 	var plaintext []byte
 	if first {
 		snapshot := u.server.users.Load()
-		match, err := snapshot.discover(encrypted, u.recvScratch[:0], u.conn.RemoteAddr())
+		match, err := snapshot.discover(encrypted, u.recvScratch[:0], &net.TCPAddr{IP: net.IP(ingress.PeerIP(u.ctx, u.conn.RemoteAddr()).AsSlice())})
 		if err != nil {
 			return segment{}, err
 		}
+		verdict = match.verdict
 		u.user = match.user
-		if u.server.replay.seen(encrypted[:nonceSize], nil) {
-			return segment{}, errors.New("mieru: replayed stream handshake")
-		}
 		u.recv = streamCipher{aead: match.aead, set: true}
 		copy(u.recv.nonce[:], encrypted[:nonceSize])
 		plaintext = match.text
@@ -88,6 +95,11 @@ func (u *streamUnderlay) readSegment() (segment, error) {
 	meta, err := parseMetadata(plaintext, time.Now())
 	if err != nil {
 		return segment{}, err
+	}
+	// The first record must be a client session opener. A server response uses
+	// the same epoch key and can decrypt, but is not an authenticated handshake.
+	if first && (meta.protocol != openSessionRequest || meta.sessionID == 0) {
+		return segment{}, errors.New("mieru: invalid initial client protocol")
 	}
 	if meta.prefixLen != 0 {
 		if _, err = io.CopyN(io.Discard, u.conn, int64(meta.prefixLen)); err != nil {
@@ -111,6 +123,13 @@ func (u *streamUnderlay) readSegment() (segment, error) {
 		}
 	}
 	if first {
+		if !u.server.users.Load().active(u.user) {
+			return segment{}, errors.New("mieru: inactive credential")
+		}
+		if u.server.replay.seen(u.user.credential, encrypted[:nonceSize]) {
+			return segment{}, errors.New("mieru: replayed stream handshake")
+		}
+		verdict.Accept()
 		u.authenticated.Store(true)
 		if u.server.option.OnAuthenticated != nil {
 			u.server.option.OnAuthenticated(u.ctx)

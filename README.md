@@ -75,7 +75,7 @@ Shadowsocks 支持以下方法：
 | `aes-256-gcm` | 已实现 | 已实现 |
 | `chacha20-ietf-poly1305` | 已实现 | 已实现 |
 
-Shadowsocks classic AEAD 每个监听器使用一份凭据；SS2022 的两种 AES 方法支持同端口多用户。SS2022 三种方法和 Naive 的配置见 [协议说明](docs/naive-ss2022.md)。Shadowsocks 插件见[独立说明](docs/shadowsocks-plugins.md)。配置应用只重建受影响的监听器；这些监听器的旧连接会关闭。
+Shadowsocks classic AEAD 支持同端口多用户，接入 [authscan 认证扫描保护](docs/authscan.md)；SS2022 的两种 AES 方法支持同端口多用户。SS2022 三种方法和 Naive 的配置见 [协议说明](docs/naive-ss2022.md)。Shadowsocks 插件见[独立说明](docs/shadowsocks-plugins.md)。配置应用只重建受影响的监听器；这些监听器的旧连接会关闭。
 
 配置版本、凭据/证书资产、幂等应用和重启恢复可通过本机 CLI 使用。P5 管理 API 已接入认证、资产、草稿/计划/异步应用、状态和恢复；Web 表单仍属于 P6，当前界面保持骨架。详见 [管理 API 使用说明](docs/management-implementation.md)。协议细节与验证范围见 [Shadowsocks 实现说明](docs/shadowsocks.md)。
 

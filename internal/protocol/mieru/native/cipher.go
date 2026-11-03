@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/authscan"
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -48,7 +50,7 @@ type compiledUser struct {
 type userSnapshot struct {
 	users     []*compiledUser
 	mandatory bool
-	cache     *sourceCache
+	scan      *authscan.Selector[netip.Addr]
 }
 
 func (s *userSnapshot) active(user *compiledUser) bool {
@@ -75,7 +77,7 @@ func PrepareUsers(users []User) (*PreparedUsers, error) {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	snapshot := &userSnapshot{users: make([]*compiledUser, 0, len(names)), cache: newSourceCache()}
+	snapshot := &userSnapshot{users: make([]*compiledUser, 0, len(names)), scan: newAuthSelector()}
 	for index, name := range names {
 		credential := hashPassword([]byte(byName[name].Password), []byte(name))
 		user := &compiledUser{id: uint32(index + 1), name: name, credential: credential}
@@ -163,9 +165,11 @@ func userHintDigest(name string, nonce []byte) [32]byte {
 }
 
 type userMatch struct {
-	user *compiledUser
-	aead cipherAEAD
-	text []byte
+	epoch   int64
+	verdict *authscan.Match[netip.Addr]
+	user    *compiledUser
+	aead    cipherAEAD
+	text    []byte
 }
 
 func (s *userSnapshot) discover(ciphertext, dst []byte, source net.Addr) (userMatch, error) {
@@ -173,45 +177,32 @@ func (s *userSnapshot) discover(ciphertext, dst []byte, source net.Addr) (userMa
 		return userMatch{}, errors.New("mieru: invalid encrypted metadata")
 	}
 	nonce := ciphertext[:nonceSize]
-	candidates, candidateCount := s.cache.lookup(source)
-	var attempted [sourceCacheUsers]uint32
-	attemptedCount := 0
-	for _, hinted := range []bool{true, false} {
-		if !hinted && s.mandatory {
-			break
-		}
-		for index := 0; index < candidateCount; index++ {
-			user := candidates[index]
-			if user == nil || hintMatches(user.name, nonce) != hinted {
-				continue
+	var selected userMatch
+	attempt := func(hinted bool) func(int) bool {
+		return func(index int) bool {
+			user := s.users[index]
+			if hintMatches(user.name, nonce) != hinted {
+				return false
 			}
-			if attemptedCount < len(attempted) {
-				attempted[attemptedCount] = user.id
-				attemptedCount++
-			}
-			if match, ok := tryUser(user, ciphertext, dst); ok {
-				s.cache.record(source, user)
-				return match, nil
-			}
-		}
-		for _, user := range s.users {
-			seen := false
-			for index := 0; index < attemptedCount; index++ {
-				if attempted[index] == user.id {
-					seen = true
-					break
-				}
-			}
-			if seen || hintMatches(user.name, nonce) != hinted {
-				continue
-			}
-			if match, ok := tryUser(user, ciphertext, dst); ok {
-				s.cache.record(source, user)
-				return match, nil
-			}
+			var ok bool
+			selected, ok = tryUser(user, ciphertext, dst)
+			return ok
 		}
 	}
-	return userMatch{}, errors.New("mieru: authentication failed")
+	phases := []func(int) bool{attempt(true)}
+	if !s.mandatory {
+		phases = append(phases, attempt(false))
+	}
+	verdict, err := s.scan.FindPhased(ingress.AddressIP(source), len(s.users), phases...)
+	if err != nil {
+		return userMatch{}, err
+	}
+	selected.verdict = verdict
+	return selected, nil
+}
+
+func newAuthSelector() *authscan.Selector[netip.Addr] {
+	return authscan.NewSelector(authscan.HashAddr, authscan.GuardOptions{WorkRate: 1 << 18})
 }
 
 func tryUser(user *compiledUser, ciphertext, dst []byte) (userMatch, bool) {
@@ -221,10 +212,10 @@ func tryUser(user *compiledUser, ciphertext, dst []byte) (userMatch, bool) {
 	}
 	nonce := ciphertext[:nonceSize]
 	body := ciphertext[nonceSize:]
-	for _, aead := range keys.aead {
+	for index, aead := range keys.aead {
 		plaintext, openErr := aead.Open(dst, nonce, body, nil)
 		if openErr == nil {
-			return userMatch{user: user, aead: aead, text: plaintext}, true
+			return userMatch{user: user, aead: aead, text: plaintext, epoch: keys.epoch + int64(index-1)*int64(keyRefreshInterval/time.Second)}, true
 		}
 	}
 	return userMatch{}, false
@@ -273,104 +264,4 @@ func incrementNonce(nonce []byte) {
 			return
 		}
 	}
-}
-
-const (
-	sourceCacheSize     = 8192
-	sourceCacheUsers    = 8
-	sourceCacheLifetime = 10 * time.Minute
-)
-
-type sourceCache struct {
-	table atomic.Pointer[sourceCacheTable]
-}
-
-type sourceCacheTable [sourceCacheSize]atomic.Pointer[sourceCacheEntry]
-
-type sourceCacheEntry struct {
-	key     [16]byte
-	expires int64
-	users   [sourceCacheUsers]*compiledUser
-	count   uint8
-}
-
-func newSourceCache() *sourceCache { return new(sourceCache) }
-
-func sourceKey(address net.Addr) ([16]byte, bool) {
-	var ip net.IP
-	switch value := address.(type) {
-	case *net.TCPAddr:
-		ip = value.IP
-	case *net.UDPAddr:
-		ip = value.IP
-	}
-	parsed, ok := netip.AddrFromSlice(ip)
-	if !ok {
-		return [16]byte{}, false
-	}
-	return parsed.Unmap().As16(), true
-}
-
-func (c *sourceCache) lookup(address net.Addr) ([sourceCacheUsers]*compiledUser, int) {
-	var empty [sourceCacheUsers]*compiledUser
-	key, ok := sourceKey(address)
-	if c == nil || !ok {
-		return empty, 0
-	}
-	table := c.table.Load()
-	if table == nil {
-		return empty, 0
-	}
-	entry := table[sourceCacheIndex(key)].Load()
-	if entry == nil || entry.key != key || time.Now().UnixNano() >= entry.expires {
-		return empty, 0
-	}
-	return entry.users, int(entry.count)
-}
-
-func (c *sourceCache) record(address net.Addr, user *compiledUser) {
-	key, ok := sourceKey(address)
-	if c == nil || !ok || user == nil {
-		return
-	}
-	table := c.table.Load()
-	if table == nil {
-		fresh := new(sourceCacheTable)
-		if c.table.CompareAndSwap(nil, fresh) {
-			table = fresh
-		} else {
-			table = c.table.Load()
-		}
-	}
-	slot := &table[sourceCacheIndex(key)]
-	for {
-		current := slot.Load()
-		now := time.Now()
-		if current != nil && current.key == key && current.count != 0 && current.users[0] == user &&
-			current.expires-now.UnixNano() > int64(sourceCacheLifetime/2) {
-			return
-		}
-		next := &sourceCacheEntry{key: key, expires: now.Add(sourceCacheLifetime).UnixNano(), count: 1}
-		next.users[0] = user
-		if current != nil && current.key == key && now.UnixNano() < current.expires {
-			for index := 0; index < int(current.count) && int(next.count) < len(next.users); index++ {
-				if current.users[index] == user {
-					continue
-				}
-				next.users[next.count] = current.users[index]
-				next.count++
-			}
-		}
-		if slot.CompareAndSwap(current, next) {
-			return
-		}
-	}
-}
-
-func sourceCacheIndex(key [16]byte) int {
-	value := uint32(2166136261)
-	for _, part := range key {
-		value = (value ^ uint32(part)) * 16777619
-	}
-	return int(value & (sourceCacheSize - 1))
 }
