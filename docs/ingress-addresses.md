@@ -74,3 +74,5 @@ python3 scripts/test-origin.py --source-ip "$NODE_IP"
 2026-11-02 验证记录：`make check`、`make check-web`（vet/race）、受影响专项回归重复验证及 Linux amd64/arm64 核心/管理构建全部通过。实际源 IP 检查使用本机已分配的非回环 IPv4；另验证 IPv6 header、IPv4/IPv6 混合 UDP 关联、跨族 TCP 和仅 AAAA 域名的回退。独立 Mieru TCP/UDP underlay、SSR、kcptun 客户端的 TCP/UDP 目标均观察到正确入口 IP。
 
 普通连接兼容性复跑通过 19 个基础协议组合、96 个 Xray VLESS 组合，以及 162 个 Shadowsocks 插件组合和 4 个错误凭据检查。插件矩阵曾在 chacha20 的 WebSocket early-data 组合出现一次断连，随后该组合单独重复 5 次及完整矩阵通过；根因尚未定位，不作为已修复问题。此前 VLESS 的偶发超时也不因本轮通过而宣称已消除。
+
+配置路由/DNS 后，业务与协议目标使用相同配置代次的解析器；DNS 上游主机名保留系统引导解析，避免递归。代理 UDP/53 经自定义解析器处理时仍传递入口地址，DoH 不跨不同入口绑定复用连接。详见[路由和 DNS](routing-dns.md)。

@@ -28,12 +28,21 @@ type config struct {
 }
 
 func metadata(raw string, network C.NetWork) (*C.Metadata, error) {
-	address, err := netip.ParseAddrPort(raw)
+	host, value, err := net.SplitHostPort(raw)
 	if err != nil {
 		return nil, err
 	}
-	return &C.Metadata{DstIP: address.Addr(), DstPort: address.Port(), NetWork: network}, nil
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 || host == "" {
+		return nil, fmt.Errorf("invalid target address")
+	}
+	if address, err := netip.ParseAddr(host); err == nil {
+		return &C.Metadata{DstIP: address, DstPort: uint16(port), NetWork: network}, nil
+	}
+	// Preserve hostnames so the node's configured DNS and domain policy are tested.
+	return &C.Metadata{Host: host, DstPort: uint16(port), NetWork: network}, nil
 }
+
 func main() {
 	// Keep a broken third-party deadline implementation from hanging the harness.
 	watchdog := time.AfterFunc(25*time.Second, func() { _ = pprof.Lookup("goroutine").WriteTo(os.Stderr, 2); os.Exit(2) })

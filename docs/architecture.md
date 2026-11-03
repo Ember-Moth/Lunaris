@@ -33,7 +33,7 @@ Lunaris 面向个人自用、自托管：在自己的服务器安装一个程序
 
 选择 SQLite 是为了将配置版本、引用和操作提交放在同一事务中；此处属于应用本地存储，符合 SQLite 的定位。[SQLite 用途](https://sqlite.org/whentouse.html)。`modernc.org/sqlite` 提供不依赖 CGo 的驱动，具体版本与平台构建需要在接入时锁定和验证。[驱动文档](https://pkg.go.dev/modernc.org/sqlite)。
 
-不建设机场面板对接、套餐和计费上报、多租户、跨节点调度、TUN、系统代理或客户端策略组。多份协议凭据只是本机配置，不扩展为统一用户中心。首版直接出口；中转、自动证书、无中断更新按实际需求追加。
+不建设机场面板对接、套餐和计费上报、多租户、跨节点调度、TUN、系统代理或客户端策略组。多份协议凭据只是本机配置，不扩展为统一用户中心。当前支持直连、阻断和 DNS 处理；代理出站、中转、自动证书、无中断更新按实际需求追加。
 
 ## 2. 运行结构
 
@@ -53,7 +53,8 @@ flowchart TB
     Library --> Sing[sing 网络接口与缓冲区基建]
     Native --> Sing
     Sing --> Relay[TCP / UDP 转发]
-    Relay --> Egress[域名解析与直接拨号]
+    Relay --> Policy[配置代次内的路由与 DNS]
+    Policy --> Egress[直连 / 阻断 / DNS 处理]
     Egress --> Destination[目标服务]
     Runtime --> Observe
     Relay --> Observe
@@ -74,7 +75,7 @@ flowchart TB
 | `node` | 活动实例、运行代次、状态收集、启停与补偿恢复 | 不依赖 HTTP 路由和数据库实现 |
 | `protocol` | sing-xxx 适配或基于 sing 的独立协议实现、认证与生命周期 | 必须使用 sing 基建；不依赖管理 API 和存储 |
 | `transport` | TCP/UDP socket、TLS 适配、资源跟踪 | 不建设任意传输组合平台 |
-| `relay` / `egress` | TCP/UDP 转发、解析、拨号、超时 | 不理解管理员、草稿或配置事务 |
+| `relay` / `egress` | TCP/UDP 转发、路由与 DNS 适配、选源、拨号和超时 | 不理解管理员、草稿或配置事务 |
 | `observability` | 有界日志、聚合计数、运行快照 | 不在数据路径上写计费数据库 |
 
 接口由使用方定义，只在需要替换上游适配或模拟故障的位置引入。根目录 `main.go` 负责进程入口和信号，`cmd/run.go` 负责命令分发与依赖组装，显式注入依赖；不使用全局服务定位器和隐式插件注册。
@@ -138,7 +139,7 @@ scripts/                     构建与发布入口
 
 ### 主要对象
 
-- `NodeConfig`：带 `schema_version` 的完整配置快照，包含监听器和直接出口选项。
+- `NodeConfig`：带 `schema_version` 的完整配置快照，包含监听器、路由/DNS、GeoData 绑定和资源选项。
 - `ListenerSpec`：稳定 ID、名称、启用状态、协议类型、bind 地址和端口、该协议专属选项、凭据和证书引用。协议选项是带类型标记的联合类型，拒绝不认识的字段和组合。
 - `CredentialAsset`：不可变 ID、协议种类、可选标签和协议需要的秘密材料。多个设备可使用不同凭据；不引入全局用户 ID。
 - `CertificateAsset`：不可变 ID、证书链、私钥、指纹与有效期。替换证书生成新 ID，不在原记录上改私钥。
@@ -323,3 +324,5 @@ Go、Hertz、前端依赖和 sing 系列依赖统一锁版本；sing 必须直�
 核心阶段通过 CLI、应用服务和网络集成测试验证业务，HTTP 与 Web 后置。当前实际功能见 [README](../README.md)；架构中的认证、配置应用和其他代理协议不可因目录或接口已存在而视为交付。
 
 首批协议、TCP/TLS、WebSocket、HTTPUpgrade 与 QUIC 组合已实现；后续继续收敛扩展传输和前端视觉方向。React + shadcn/ui、Hertz、GPL-3.0、sing 必选基础、单进程、本机 SQLite、内嵌前端与配置应用模型已有明确设计。
+
+路由/DNS 的当前配置、GeoData 资产和代次回收说明见[路由与解析](routing-dns.md)。

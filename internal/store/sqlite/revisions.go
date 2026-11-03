@@ -115,6 +115,9 @@ func (s *Store) SaveDraft(ctx context.Context, expected string, snapshot *model.
 	if current.DraftRevision != expected {
 		return model.ConfigRevision{}, ports.ErrConflict
 	}
+	if err := validateGeoBindings(ctx, tx, snapshot.Config.GeoData, snapshot.GeoData); err != nil {
+		return model.ConfigRevision{}, err
+	}
 	oldAssets, oldSecrets, err := bindings(ctx, tx, expected)
 	if err != nil {
 		return model.ConfigRevision{}, err
@@ -176,6 +179,9 @@ func (s *Store) SaveDraft(ctx context.Context, expected string, snapshot *model.
 			return model.ConfigRevision{}, err
 		}
 	}
+	if err := saveGeoBindings(ctx, tx, id, snapshot.Config.GeoData); err != nil {
+		return model.ConfigRevision{}, err
+	}
 	if _, err := tx.ExecContext(ctx, "UPDATE config_heads SET draft_revision=? WHERE id=1", id); err != nil {
 		return model.ConfigRevision{}, err
 	}
@@ -216,6 +222,9 @@ func revision(ctx context.Context, q queryer, id string) (model.ConfigRevision, 
 	if err == nil {
 		result.CertificateAssets, err = certificateIDs(ctx, q, id)
 	}
+	if err == nil {
+		err = checkRevisionGeoBindings(ctx, q, id, result.Config.GeoData)
+	}
 	return result, err
 }
 
@@ -248,7 +257,11 @@ func (s *Store) Resolve(ctx context.Context, id string) (*model.RuntimeConfig, e
 			}
 		}
 	}
-	return &model.RuntimeConfig{Config: revision.Config, Credentials: secrets, Certificates: certs}, nil
+	geodata, err := resolveGeoData(ctx, s.db, revision.Config.GeoData)
+	if err != nil {
+		return nil, err
+	}
+	return &model.RuntimeConfig{Config: revision.Config, Credentials: secrets, Certificates: certs, GeoData: geodata}, nil
 }
 
 func (s *Store) Revisions(ctx context.Context, limit int) ([]model.ConfigRevision, error) {

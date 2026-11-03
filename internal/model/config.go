@@ -79,16 +79,21 @@ type Certificate struct {
 }
 
 type NodeConfig struct {
-	SchemaVersion int            `json:"schema_version"`
-	Listeners     []ListenerSpec `json:"listeners"`
-	Limits        Limits         `json:"limits"`
+	SchemaVersion int               `json:"schema_version"`
+	Listeners     []ListenerSpec    `json:"listeners"`
+	Limits        Limits            `json:"limits"`
+	Route         *RouteConfig      `json:"route,omitempty"`
+	DNS           *DNSConfig        `json:"dns,omitempty"`
+	GeoData       map[string]string `json:"geodata,omitempty"`
 }
 
 // RuntimeConfig includes resolved assets and must not be serialized to an API.
 type RuntimeConfig struct {
+	PolicyDigest string `json:"-" yaml:"-"`
 	Config       NodeConfig
-	Credentials  map[string][]byte      `json:"-" yaml:"-"`
-	Certificates map[string]Certificate `json:"-" yaml:"-"`
+	Credentials  map[string][]byte           `json:"-" yaml:"-"`
+	Certificates map[string]Certificate      `json:"-" yaml:"-"`
+	GeoData      map[string]*GeoDataMaterial `json:"-" yaml:"-"`
 }
 
 // Limits bounds resources owned by each listener. All durations are normalized.

@@ -74,6 +74,12 @@ func (s *Service) management() (ports.ManagementRepository, error) {
 	return r, nil
 }
 func (s *Service) ValidateDraft(ctx context.Context, input model.DraftInput) (model.DraftInput, error) {
+	select {
+	case s.validationGate <- struct{}{}:
+		defer func() { <-s.validationGate }()
+	default:
+		return input, ports.ErrBusy
+	}
 	repo, err := s.management()
 	if err != nil {
 		return input, err

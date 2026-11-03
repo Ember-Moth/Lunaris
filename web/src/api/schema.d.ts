@@ -299,6 +299,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/geodata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** listGeoDataAssets */
+        get: operations["listGeoDataAssets"];
+        put?: never;
+        /**
+         * Upload immutable GeoSite or GeoIP data
+         * @description Raw V2Ray protobuf asset, maximum 128 MiB. Kind and optional label are query parameters. Same kind/content reuses its immutable asset ID.
+         */
+        post: operations["createGeoDataAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/geodata/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete an unreferenced geodata asset */
+        delete: operations["deleteGeoDataAsset"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/listeners/{id}/connection-info": {
         parameters: {
             query?: never;
@@ -462,7 +500,12 @@ export interface components {
             /** @constant */
             connection_info_format: "parameters-v1";
             credential_kinds: string[];
+            dns_protocols: ("udp" | "tcp" | "tls" | "https")[];
+            dns_strategies: ("prefer_ipv4" | "prefer_ipv6" | "only_ipv4" | "only_ipv6")[];
+            geodata_kinds: ("geosite" | "geoip")[];
             protocols: components["schemas"]["ProtocolCapability"][];
+            route_actions: ("direct" | "block")[];
+            route_selectors: ("full" | "suffix" | "keyword" | "regex" | "cidr" | "geosite" | "geoip")[];
             /** @constant */
             schema_version: 1;
             shadowsocks_methods: string[];
@@ -550,6 +593,36 @@ export interface components {
             label?: string;
             secret?: string;
         };
+        DNSConfig: {
+            /** @default false */
+            hijack_udp53: boolean;
+            servers?: components["schemas"]["DNSServer"][];
+            /**
+             * @default prefer_ipv4
+             * @enum {string}
+             */
+            strategy: "prefer_ipv4" | "prefer_ipv6" | "only_ipv4" | "only_ipv6";
+            /**
+             * @description Nanoseconds; zero selects the default.
+             * @default 60000000000
+             */
+            system_cache_ttl: number | 0 | unknown;
+            /**
+             * @description Nanoseconds; zero selects the default.
+             * @default 5000000000
+             */
+            timeout: number | 0 | unknown;
+        };
+        DNSServer: {
+            address: string;
+            domains?: string[];
+            /**
+             * @default udp
+             * @enum {string}
+             */
+            protocol: "udp" | "tcp" | "tls" | "https";
+            server_name?: string;
+        };
         DraftInput: {
             certificate_assets?: components["schemas"]["AssetBindings"];
             config: components["schemas"]["NodeConfig"];
@@ -566,6 +639,23 @@ export interface components {
             code: string;
             message: string;
             path: string;
+        };
+        GeoDataAsset: {
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            /** @enum {string} */
+            kind: "geosite" | "geoip";
+            label: string;
+            reference_count: number;
+            references: components["schemas"]["Reference"][];
+            references_truncated: boolean;
+            sha256: string;
+            size: number;
+        };
+        GeoDataBindings: {
+            geoip?: string;
+            geosite?: string;
         };
         Heads: {
             committed_revision: string;
@@ -911,8 +1001,11 @@ export interface components {
             username: string;
         };
         NodeConfig: {
+            dns?: components["schemas"]["DNSConfig"] | null;
+            geodata?: components["schemas"]["GeoDataBindings"];
             limits?: components["schemas"]["Limits"];
             listeners: components["schemas"]["Listener"][];
+            route?: components["schemas"]["RouteConfig"] | null;
             /**
              * @default 1
              * @constant
@@ -988,6 +1081,15 @@ export interface components {
             credential_assets: components["schemas"]["AssetBindings"];
             id: string;
             parent_id?: string;
+        };
+        RouteConfig: {
+            block?: string[];
+            rules?: components["schemas"]["RouteRule"][];
+        };
+        RouteRule: {
+            /** @enum {string} */
+            action: "direct" | "block";
+            match: string[];
         };
         RuntimeStatus: {
             applying: boolean;
@@ -1869,6 +1971,131 @@ export interface operations {
         };
     };
     deleteCredential: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path: {
+                id: components["parameters"]["ResourceID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: null;
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listGeoDataAssets: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: {
+                            items: components["schemas"]["GeoDataAsset"][];
+                            next_cursor: string;
+                        };
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createGeoDataAsset: {
+        parameters: {
+            query: {
+                kind: "geosite" | "geoip";
+                label?: string;
+            };
+            header: {
+                /** @description Must exactly match the configured management origin. */
+                Origin: components["parameters"]["Origin"];
+                "X-CSRF-Token": components["parameters"]["CSRF"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 0;
+                        data: components["schemas"]["GeoDataAsset"];
+                        msg: string;
+                    };
+                };
+            };
+            /** @description Authentication, validation, conflict, limit or infrastructure error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteGeoDataAsset: {
         parameters: {
             query?: never;
             header: {

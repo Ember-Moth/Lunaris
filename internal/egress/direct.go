@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Ember-Moth/Lunaris/internal/ingress"
+	"github.com/Ember-Moth/Lunaris/internal/route"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -19,6 +20,42 @@ import (
 type Direct struct{ net.Dialer }
 
 func (d *Direct) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	if destination.IsFqdn() {
+		if resolver := route.NameResolverFromContext(ctx); resolver != nil {
+			addresses, found := route.ResolvedAddressesFromContext(ctx, destination.Fqdn)
+			if !found {
+				var err error
+				addresses, err = resolver.LookupIP(ctx, destination.Fqdn)
+				if err != nil {
+					return nil, err
+				}
+			}
+			source, bound := ingress.BindingIP(ctx)
+			same := false
+			for _, ip := range addresses {
+				if bound && ip.Unmap().Is4() == source.Is4() {
+					same = true
+				}
+			}
+			var result error
+			for _, ip := range addresses {
+				ip = ip.Unmap()
+				if !ip.IsValid() || same && ip.Is4() != source.Is4() {
+					continue
+				}
+				connection, err := d.DialContext(ctx, network, M.Socksaddr{Addr: ip, Port: destination.Port})
+				if err == nil {
+					return connection, nil
+				}
+				result = errors.Join(result, err)
+			}
+			if result == nil {
+				result = errors.New("DNS returned no usable addresses")
+			}
+			return nil, result
+		}
+	}
+
 	ip, bind := ingress.BindingIP(ctx)
 	if !bind || destination.Addr.IsValid() && destination.Addr.Unmap().Is4() != ip.Is4() {
 		return d.Dialer.DialContext(ctx, network, destination.String())
@@ -98,7 +135,13 @@ func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) er
 	}
 	if destination.IsFqdn() {
 		ctx, cancel := context.WithTimeout(c.ctx, c.timeout)
-		addresses, err := net.DefaultResolver.LookupNetIP(ctx, "ip", destination.Fqdn)
+		var addresses []netip.Addr
+		var err error
+		if resolver := route.NameResolverFromContext(ctx); resolver != nil {
+			addresses, err = resolver.LookupIP(ctx, destination.Fqdn)
+		} else {
+			addresses, err = net.DefaultResolver.LookupNetIP(ctx, "ip", destination.Fqdn)
+		}
 		cancel()
 		if err != nil {
 			return err

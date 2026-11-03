@@ -14,7 +14,7 @@ import (
 	ports "github.com/Ember-Moth/Lunaris/internal/store"
 )
 
-func resolveDraftInput(ctx context.Context, q queryer, input model.DraftInput) (*model.RuntimeConfig, error) {
+func resolveDraftInput(ctx context.Context, q queryer, input model.DraftInput, loadGeo bool) (*model.RuntimeConfig, error) {
 	snapshot := &model.RuntimeConfig{Config: input.Config, Credentials: make(map[string][]byte), Certificates: make(map[string]model.Certificate)}
 	if len(input.CredentialAssets) > 4096 || len(input.CertificateAssets) > 1024 {
 		return nil, ports.ErrInvalidInput
@@ -47,10 +47,21 @@ func resolveDraftInput(ctx context.Context, q queryer, input model.DraftInput) (
 		}
 		snapshot.Certificates[name] = value
 	}
+	if loadGeo {
+		var err error
+		snapshot.GeoData, err = resolveGeoData(ctx, q, input.Config.GeoData)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if err := validateGeoBindings(ctx, q, input.Config.GeoData, nil); err != nil {
+			return nil, err
+		}
+	}
 	return snapshot, nil
 }
 func (s *Store) ResolveDraftInput(ctx context.Context, input model.DraftInput) (*model.RuntimeConfig, error) {
-	return resolveDraftInput(ctx, s.db, input)
+	return resolveDraftInput(ctx, s.db, input, true)
 }
 func (s *Store) SaveDraftReferences(ctx context.Context, expected string, input model.DraftInput) (model.ConfigRevision, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -68,7 +79,7 @@ func (s *Store) SaveDraftReferences(ctx context.Context, expected string, input 
 	if expected == "" || current.DraftRevision != expected {
 		return model.ConfigRevision{}, ports.ErrConflict
 	}
-	if _, err = resolveDraftInput(ctx, tx, input); err != nil {
+	if _, err = resolveDraftInput(ctx, tx, input, false); err != nil {
 		return model.ConfigRevision{}, err
 	}
 	old, err := revision(ctx, tx, expected)
@@ -96,6 +107,9 @@ func (s *Store) SaveDraftReferences(ctx context.Context, expected string, input 
 		if _, err = tx.ExecContext(ctx, "INSERT INTO revision_certificates(revision_id,logical_id,asset_id) VALUES(?,?,?)", id, name, asset); err != nil {
 			return model.ConfigRevision{}, err
 		}
+	}
+	if err = saveGeoBindings(ctx, tx, id, input.Config.GeoData); err != nil {
+		return model.ConfigRevision{}, err
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE config_heads SET draft_revision=? WHERE id=1", id); err != nil {
 		return model.ConfigRevision{}, err

@@ -30,6 +30,7 @@ type Service struct {
 	runtime         *node.Runtime
 	release         func()
 	gate            chan struct{}
+	validationGate  chan struct{}
 	mu              sync.RWMutex
 	closed, blocked bool
 	applying        bool
@@ -120,7 +121,7 @@ func openService(ctx context.Context, repository ports.Repository, registry *inb
 		}
 	}
 
-	return &Service{ctx: ctx, cancel: cancel, repository: repository, registry: registry, runtime: runtime, release: release, gate: make(chan struct{}, 1), actual: initial, activeRevision: active, knownHeads: heads, mode: mode, restoreError: restoreError, reservedTCP: append([]netip.AddrPort(nil), reserved...), plans: make(map[string]ApplicationPlan), events: make(chan model.ApplyOperation, 32)}, nil
+	return &Service{ctx: ctx, cancel: cancel, repository: repository, registry: registry, runtime: runtime, release: release, gate: make(chan struct{}, 1), validationGate: make(chan struct{}, 1), actual: initial, activeRevision: active, knownHeads: heads, mode: mode, restoreError: restoreError, reservedTCP: append([]netip.AddrPort(nil), reserved...), plans: make(map[string]ApplicationPlan), events: make(chan model.ApplyOperation, 32)}, nil
 
 }
 

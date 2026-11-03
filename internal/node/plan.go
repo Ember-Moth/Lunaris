@@ -45,12 +45,13 @@ func (r *Runtime) fingerprint(snapshot *model.RuntimeConfig, spec model.Listener
 		credentials[ref] = snapshot.Credentials[ref]
 	}
 	content, _ := json.Marshal(struct {
+		Policy      string
 		Spec        model.ListenerSpec
 		Limits      model.Limits
 		Credentials map[string][]byte
 		Certificate []byte
 		PrivateKey  []byte
-	}{spec, limits, credentials, snapshot.Certificates[spec.CertificateRef].Certificate, snapshot.Certificates[spec.CertificateRef].PrivateKey})
+	}{snapshot.PolicyDigest, spec, limits, credentials, snapshot.Certificates[spec.CertificateRef].Certificate, snapshot.Certificates[spec.CertificateRef].PrivateKey})
 	mac := hmac.New(sha256.New, r.fingerprintKey[:])
 	_, _ = mac.Write(content)
 	return hex.EncodeToString(mac.Sum(nil))

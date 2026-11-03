@@ -189,7 +189,12 @@ func (h *Handler) NewPacketConnectionEx(ctx context.Context, client N.PacketConn
 			result = err
 			return
 		}
-		upstream := egress.NewPacketConn(f.ctx, socket, h.limits.DialTimeout, h.limits.MaxUDPDestinations)
+		var upstream N.PacketConn
+		if framed, ok := socket.(N.PacketConn); ok {
+			upstream = framed
+		} else {
+			upstream = egress.NewPacketConn(f.ctx, socket, h.limits.DialTimeout, h.limits.MaxUDPDestinations)
+		}
 		result = bufio.CopyPacketConn(f.ctx, &idlePacketConn{PacketConn: client, timeout: h.limits.UDPIdleTimeout}, &idlePacketConn{PacketConn: upstream, timeout: h.limits.UDPIdleTimeout})
 	}()
 }

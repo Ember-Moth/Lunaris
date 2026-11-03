@@ -28,11 +28,13 @@ class API:
         self.cookie = ""
         self.csrf = ""
 
-    def call(self, method, path, value=None, *, status=200, headers=None):
-        body = json.dumps(value) if value is not None else None
+    def call(self, method, path, value=None, *, status=200, headers=None, raw_body=None):
+        if raw_body is not None and value is not None:
+            raise ValueError("choose JSON or binary request body")
+        body = raw_body if raw_body is not None else json.dumps(value) if value is not None else None
         h = {"Origin": self.origin}
         if body is not None:
-            h["Content-Type"] = "application/json"
+            h["Content-Type"] = "application/octet-stream" if raw_body is not None else "application/json"
         if self.cookie:
             h["Cookie"] = self.cookie
         if self.csrf:

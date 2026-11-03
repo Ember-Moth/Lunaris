@@ -10,6 +10,10 @@ import (
 var ErrReferenced = errors.New("asset is referenced by a retained revision")
 
 type ManagementRepository interface {
+	CreateGeoData(context.Context, string, string, []byte) (model.GeoDataAsset, error)
+	GeoData(context.Context, string) (model.GeoDataAsset, error)
+	GeoDataPage(context.Context, string, int) ([]model.GeoDataAsset, string, error)
+	DeleteGeoData(context.Context, string) error
 	Repository
 	ResolveDraftInput(context.Context, model.DraftInput) (*model.RuntimeConfig, error)
 	SaveDraftReferences(context.Context, string, model.DraftInput) (model.ConfigRevision, error)

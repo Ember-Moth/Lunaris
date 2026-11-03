@@ -115,9 +115,58 @@ components:
                         maxLength: 64
                         type: string
                     type: array
+                dns_protocols:
+                    items:
+                        enum:
+                            - udp
+                            - tcp
+                            - tls
+                            - https
+                        type: string
+                    maxItems: 4
+                    type: array
+                dns_strategies:
+                    items:
+                        enum:
+                            - prefer_ipv4
+                            - prefer_ipv6
+                            - only_ipv4
+                            - only_ipv6
+                        type: string
+                    maxItems: 4
+                    type: array
+                geodata_kinds:
+                    items:
+                        enum:
+                            - geosite
+                            - geoip
+                        type: string
+                    maxItems: 2
+                    type: array
                 protocols:
                     items:
                         $ref: '#/components/schemas/ProtocolCapability'
+                    type: array
+                route_actions:
+                    items:
+                        enum:
+                            - direct
+                            - block
+                        type: string
+                    maxItems: 2
+                    type: array
+                route_selectors:
+                    items:
+                        enum:
+                            - full
+                            - suffix
+                            - keyword
+                            - regex
+                            - cidr
+                            - geosite
+                            - geoip
+                        type: string
+                    maxItems: 7
                     type: array
                 schema_version:
                     const: 1
@@ -150,6 +199,11 @@ components:
                 - snell_versions
                 - credential_kinds
                 - connection_info_format
+                - route_actions
+                - route_selectors
+                - dns_protocols
+                - dns_strategies
+                - geodata_kinds
             type: object
         CertificateAsset:
             additionalProperties: false
@@ -400,6 +454,70 @@ components:
                     minLength: 1
                     type: string
             type: object
+        DNSConfig:
+            additionalProperties: false
+            properties:
+                hijack_udp53:
+                    default: false
+                    type: boolean
+                servers:
+                    items:
+                        $ref: '#/components/schemas/DNSServer'
+                    maxItems: 64
+                    type: array
+                strategy:
+                    default: prefer_ipv4
+                    enum:
+                        - prefer_ipv4
+                        - prefer_ipv6
+                        - only_ipv4
+                        - only_ipv6
+                    type: string
+                system_cache_ttl:
+                    anyOf:
+                        - const: 0
+                        - maximum: 8.64e+13
+                          minimum: 1e+09
+                    default: 6e+10
+                    description: Nanoseconds; zero selects the default.
+                    type: integer
+                timeout:
+                    anyOf:
+                        - const: 0
+                        - maximum: 6e+10
+                          minimum: 1e+06
+                    default: 5e+09
+                    description: Nanoseconds; zero selects the default.
+                    type: integer
+            required: []
+            type: object
+        DNSServer:
+            additionalProperties: false
+            properties:
+                address:
+                    maxLength: 2048
+                    minLength: 1
+                    type: string
+                domains:
+                    items:
+                        maxLength: 4096
+                        type: string
+                    maxItems: 8192
+                    type: array
+                protocol:
+                    default: udp
+                    enum:
+                        - udp
+                        - tcp
+                        - tls
+                        - https
+                    type: string
+                server_name:
+                    maxLength: 253
+                    type: string
+            required:
+                - address
+            type: object
         DraftInput:
             additionalProperties: false
             properties:
@@ -447,6 +565,63 @@ components:
                 - path
                 - code
                 - message
+            type: object
+        GeoDataAsset:
+            additionalProperties: false
+            properties:
+                created_at:
+                    format: date-time
+                    type: string
+                id:
+                    maxLength: 128
+                    minLength: 1
+                    type: string
+                kind:
+                    enum:
+                        - geosite
+                        - geoip
+                    type: string
+                label:
+                    maxLength: 256
+                    type: string
+                reference_count:
+                    minimum: 0
+                    type: integer
+                references:
+                    items:
+                        $ref: '#/components/schemas/Reference'
+                    maxItems: 100
+                    type: array
+                references_truncated:
+                    type: boolean
+                sha256:
+                    pattern: ^[a-f0-9]{64}$
+                    type: string
+                size:
+                    maximum: 1.34217728e+08
+                    minimum: 1
+                    type: integer
+            required:
+                - id
+                - label
+                - created_at
+                - references
+                - reference_count
+                - references_truncated
+                - kind
+                - sha256
+                - size
+            type: object
+        GeoDataBindings:
+            additionalProperties: false
+            properties:
+                geoip:
+                    maxLength: 128
+                    type: string
+                geosite:
+                    maxLength: 128
+                    type: string
+            required: []
             type: object
         Heads:
             additionalProperties: false
@@ -1476,6 +1651,12 @@ components:
         NodeConfig:
             additionalProperties: false
             properties:
+                dns:
+                    anyOf:
+                        - $ref: '#/components/schemas/DNSConfig'
+                        - type: "null"
+                geodata:
+                    $ref: '#/components/schemas/GeoDataBindings'
                 limits:
                     $ref: '#/components/schemas/Limits'
                 listeners:
@@ -1483,6 +1664,10 @@ components:
                         $ref: '#/components/schemas/Listener'
                     maxItems: 1024
                     type: array
+                route:
+                    anyOf:
+                        - $ref: '#/components/schemas/RouteConfig'
+                        - type: "null"
                 schema_version:
                     const: 1
                     default: 1
@@ -1736,6 +1921,41 @@ components:
                 - config
                 - credential_assets
                 - certificate_assets
+            type: object
+        RouteConfig:
+            additionalProperties: false
+            properties:
+                block:
+                    items:
+                        maxLength: 4096
+                        type: string
+                    maxItems: 8192
+                    type: array
+                rules:
+                    items:
+                        $ref: '#/components/schemas/RouteRule'
+                    maxItems: 4096
+                    type: array
+            required: []
+            type: object
+        RouteRule:
+            additionalProperties: false
+            properties:
+                action:
+                    enum:
+                        - direct
+                        - block
+                    type: string
+                match:
+                    items:
+                        maxLength: 4096
+                        type: string
+                    maxItems: 8192
+                    minItems: 1
+                    type: array
+            required:
+                - action
+                - match
             type: object
         RuntimeStatus:
             additionalProperties: false
@@ -2829,6 +3049,141 @@ paths:
                                 $ref: '#/components/schemas/Error'
                     description: Authentication, validation, conflict, limit or infrastructure error
             summary: deleteCredential
+    /api/v1/geodata:
+        get:
+            operationId: listGeoDataAssets
+            parameters:
+                - $ref: '#/components/parameters/Cursor'
+                - $ref: '#/components/parameters/Limit'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        additionalProperties: false
+                                        properties:
+                                            items:
+                                                items:
+                                                    $ref: '#/components/schemas/GeoDataAsset'
+                                                maxItems: 100
+                                                type: array
+                                            next_cursor:
+                                                maxLength: 128
+                                                type: string
+                                        required:
+                                            - items
+                                            - next_cursor
+                                        type: object
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: listGeoDataAssets
+        post:
+            description: Raw V2Ray protobuf asset, maximum 128 MiB. Kind and optional label are query parameters. Same kind/content reuses its immutable asset ID.
+            operationId: createGeoDataAsset
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+                - in: query
+                  name: kind
+                  required: true
+                  schema:
+                    enum:
+                        - geosite
+                        - geoip
+                    type: string
+                - in: query
+                  name: label
+                  required: false
+                  schema:
+                    maxLength: 256
+                    type: string
+            requestBody:
+                content:
+                    application/octet-stream:
+                        schema:
+                            format: binary
+                            maxLength: 1.34217728e+08
+                            type: string
+                required: true
+            responses:
+                "201":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        $ref: '#/components/schemas/GeoDataAsset'
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: Upload immutable GeoSite or GeoIP data
+    /api/v1/geodata/{id}:
+        delete:
+            operationId: deleteGeoDataAsset
+            parameters:
+                - $ref: '#/components/parameters/Origin'
+                - $ref: '#/components/parameters/CSRF'
+                - $ref: '#/components/parameters/ResourceID'
+            responses:
+                "200":
+                    content:
+                        application/json:
+                            schema:
+                                additionalProperties: false
+                                properties:
+                                    code:
+                                        const: 0
+                                        type: integer
+                                    data:
+                                        type: "null"
+                                    msg:
+                                        type: string
+                                required:
+                                    - code
+                                    - msg
+                                    - data
+                                type: object
+                    description: Success
+                default:
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+                    description: Authentication, validation, conflict, limit or infrastructure error
+            summary: Delete an unreferenced geodata asset
     /api/v1/listeners/{id}/connection-info:
         post:
             description: Requires reauthentication within the last five minutes and matching committed/runtime identity. Explicit host required; wildcard bind addresses are not exported as client hosts.

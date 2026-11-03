@@ -187,3 +187,14 @@ UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadows
 实现范围、对端声明地址的信任边界及复现命令见[入口地址说明](ingress-addresses.md)。
 
 入口地址阶段验证：完整 vet/race、Linux 双架构交叉编译、实际出站源 IP 和独立客户端检查通过。普通连接的 19/96/162 组合复跑及已知偶发问题的范围见[验证记录](ingress-addresses.md)。
+
+## Polaris 路由与 DNS 移植
+
+- [x] 域名、CIDR、GeoSite/GeoIP 的有序匹配与索引，范围为直连、阻断和 DNS。
+- [x] UDP/TCP/DoT/DoH、地址策略、缓存和并发查询合并。
+- [x] SQLite 不可变 GeoData、JSON API、类型生成与配置代次所有权。
+- [x] UDP 逐包路由、断连确认、失败补偿和源地址传递。
+
+不包含代理出站客户端、公开 DNS 监听、FakeIP 或 DoQ；契约与验证入口见[路由和 DNS](routing-dns.md)。
+
+本轮完整 vet/race、Web 构建/lint、DNS wire 模糊测试、独立进程路由/管理/源地址回归及 Linux 双架构核心/管理交叉编译通过。实际运行平台、备份恢复证据与 H3 偶发测试的限制见上述验证记录。

@@ -10,7 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/egress"
 	utls "github.com/refraction-networking/utls"
+	M "github.com/sagernet/sing/common/metadata"
 	reality "github.com/xtls/reality"
 )
 
@@ -91,7 +93,7 @@ func releaseRealityRecords(keys []string) {
 }
 func probeRealityTarget(ctx context.Context, target, name, key string, alpn int, timeout time.Duration) error {
 	probe := func(ccs bool) error {
-		raw, err := (&net.Dialer{Timeout: timeout}).DialContext(ctx, "tcp", target)
+		raw, err := (&egress.Direct{Dialer: net.Dialer{Timeout: timeout}}).DialContext(ctx, "tcp", M.ParseSocksaddr(target))
 		if err != nil {
 			return err
 		}

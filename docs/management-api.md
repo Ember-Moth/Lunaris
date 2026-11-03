@@ -145,3 +145,7 @@ Content-Type: application/json
 - 测试初始化竞争、会话注销、CSRF、凭据响应脱敏、ETag 冲突与幂等重试的业务结果。
 - 应用任务在 HTTP 连接断开后继续并可查询，不引用被 Hertz 复用的请求内存。
 - 浏览器端验证实际表单保存、应用失败反馈和重启后的状态，不只验证静态页面能打开。
+
+## 路由、DNS 与 GeoData
+
+`config.route`、`config.dns`、`config.geodata` 与监听器一起保存、校验和应用。`GET /capabilities` 提供支持的动作、选择器、DNS 协议和地址策略。新增 `GET /geodata`、`POST /geodata?kind=geosite|geoip&label=...`、`DELETE /geodata/{id}`；上传使用有界 application/octet-stream 原始内容，响应保持 JSON 信封。具体字段与约束见 [OpenAPI](../api/openapi.yaml) 和[实现说明](routing-dns.md)。

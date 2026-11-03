@@ -12,6 +12,7 @@ import (
 	"slices"
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
+	"github.com/Ember-Moth/Lunaris/internal/policy"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/transport"
 )
@@ -28,7 +29,7 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 	if err := model.ValidateLimits(input.Config.Limits); err != nil {
 		return nil, err
 	}
-	result := &model.RuntimeConfig{Config: model.NodeConfig{SchemaVersion: input.Config.SchemaVersion, Limits: input.Config.Limits, Listeners: make([]model.ListenerSpec, 0, len(input.Config.Listeners))}, Credentials: make(map[string][]byte, len(input.Credentials))}
+	result := &model.RuntimeConfig{GeoData: input.GeoData, Config: model.NodeConfig{SchemaVersion: input.Config.SchemaVersion, Limits: input.Config.Limits, Route: input.Config.Route, DNS: input.Config.DNS, GeoData: input.Config.GeoData, Listeners: make([]model.ListenerSpec, 0, len(input.Config.Listeners))}, Credentials: make(map[string][]byte, len(input.Credentials))}
 	for id, secret := range input.Credentials {
 		if id == "" || len(secret) == 0 || len(secret) > 4096 {
 			return nil, errors.New("credential ids must be non-empty and secrets must contain 1 to 4096 bytes")
@@ -170,6 +171,9 @@ func (r *Registry) Normalize(input *model.RuntimeConfig) (*model.RuntimeConfig, 
 				}
 			}
 		}
+	}
+	if err := policy.Normalize(result); err != nil {
+		return nil, fmt.Errorf("routing and DNS: %w", err)
 	}
 	return result, nil
 }

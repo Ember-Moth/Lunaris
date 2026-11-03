@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Ember-Moth/Lunaris/internal/egress"
 	"github.com/Ember-Moth/Lunaris/internal/inbound"
 	"github.com/Ember-Moth/Lunaris/internal/model"
+	"github.com/Ember-Moth/Lunaris/internal/policy"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/relay"
 	"github.com/sagernet/sing/common/logger"
@@ -32,6 +32,7 @@ type record struct {
 	fingerprint string
 	instance    protocol.Instance
 	relay       *relay.Handler
+	policy      *policy.Lease
 	ctx         context.Context
 	cancel      context.CancelFunc
 	// All fields below are protected by Runtime.mu.
@@ -47,6 +48,7 @@ type Runtime struct {
 	ctx                             context.Context
 	cancel                          context.CancelFunc
 	registry                        *inbound.Registry
+	policies                        *policy.Manager
 	initialTimeout                  time.Duration
 	gate                            chan struct{}
 	mu                              sync.RWMutex
@@ -74,7 +76,7 @@ func Start(ctx context.Context, snapshot *model.RuntimeConfig, registry *inbound
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	r := &Runtime{ctx: ctx, cancel: cancel, registry: registry, initialTimeout: normalized.Config.Limits.ShutdownTimeout, gate: make(chan struct{}, 1),
+	r := &Runtime{ctx: ctx, cancel: cancel, registry: registry, policies: policy.NewManager(ctx), initialTimeout: normalized.Config.Limits.ShutdownTimeout, gate: make(chan struct{}, 1),
 		records: make(map[string]*record), owned: make(map[*record]struct{}),
 		bootID: rand.Text(), errors: make(chan error, 16), done: make(chan struct{})}
 	if _, err := rand.Read(r.fingerprintKey[:]); err != nil {
@@ -107,7 +109,13 @@ func (r *Runtime) ShutdownTimeout() time.Duration { return r.timeout() }
 // candidates so a failed cleanup cannot make live resources disappear.
 func (r *Runtime) build(target *model.RuntimeConfig, spec model.ListenerSpec) (*record, error) {
 	ctx, cancel := context.WithCancel(r.ctx)
-	flow := relay.New(ctx, &egress.Direct{}, target.Config.Limits)
+	lease, err := r.policies.Acquire(target)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	ctx = lease.Context(ctx)
+	flow := relay.New(ctx, lease, target.Config.Limits)
 	credentials := make(map[string][]byte, len(spec.CredentialRefs))
 	for _, ref := range r.registry.CredentialRefs(spec) {
 		credentials[ref] = bytes.Clone(target.Credentials[ref])
@@ -125,9 +133,10 @@ func (r *Runtime) build(target *model.RuntimeConfig, spec model.ListenerSpec) (*
 		cleanup, stop := context.WithTimeout(context.Background(), target.Config.Limits.ShutdownTimeout)
 		defer stop()
 		_ = flow.Close(cleanup)
+		_ = lease.Close(cleanup)
 		return nil, fmt.Errorf("listener %q: build: %w", spec.ID, err)
 	}
-	rec := &record{spec: spec, instance: instance, relay: flow, ctx: ctx, cancel: cancel, state: "prepared", provisional: true,
+	rec := &record{spec: spec, instance: instance, relay: flow, policy: lease, ctx: ctx, cancel: cancel, state: "prepared", provisional: true,
 		fingerprint: r.fingerprint(target, spec)}
 	r.mu.Lock()
 	r.nextGeneration++
@@ -234,6 +243,9 @@ func (r *Runtime) stopRecord(ctx context.Context, rec *record) error {
 	r.mu.Unlock()
 	rec.cancel()
 	err := errors.Join(rec.instance.Stop(ctx), rec.relay.Close(ctx))
+	if rec.policy != nil {
+		err = errors.Join(err, rec.policy.Close(ctx))
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err == nil {

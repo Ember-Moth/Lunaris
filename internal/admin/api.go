@@ -48,6 +48,7 @@ type API struct {
 	secure, nativeTLS bool
 	proxies           []netip.Prefix
 	requests          chan struct{}
+	geoUploads        chan struct{}
 	attempts          attemptLimiter
 	logs              *Logs
 	version           Version
@@ -69,7 +70,7 @@ func NewAPI(ctx context.Context, o APIOptions) (*API, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &API{repo: o.Repository, service: o.Service, registry: o.Registry, auth: o.Auth, origin: origin, scheme: scheme, secure: scheme == "https", nativeTLS: o.NativeTLS, proxies: append([]netip.Prefix(nil), o.TrustedProxies...), requests: make(chan struct{}, 32), logs: NewLogs(status.Runtime.BootID), version: o.Version}
+	a := &API{repo: o.Repository, service: o.Service, registry: o.Registry, auth: o.Auth, origin: origin, scheme: scheme, secure: scheme == "https", nativeTLS: o.NativeTLS, proxies: append([]netip.Prefix(nil), o.TrustedProxies...), requests: make(chan struct{}, 32), geoUploads: make(chan struct{}, 1), logs: NewLogs(status.Runtime.BootID), version: o.Version}
 	a.logs.Add("info", "management service initialized", "")
 	if status.RestoreError != "" {
 		a.logs.Add("error", "committed proxy listeners require repair", "")
@@ -106,6 +107,9 @@ func (a *API) Register(h *server.Hertz) {
 	g.GET("/credentials", a.credentials)
 	g.POST("/credentials", a.createCredential)
 	g.DELETE("/credentials/:id", a.deleteCredential)
+	g.GET("/geodata", a.geodata)
+	g.POST("/geodata", a.createGeoData)
+	g.DELETE("/geodata/:id", a.deleteGeoData)
 	g.GET("/certificates", a.certificates)
 	g.POST("/certificates", a.createCertificate)
 	g.DELETE("/certificates/:id", a.deleteCertificate)
@@ -125,7 +129,7 @@ func (a *API) error(c *app.RequestContext, err error, validation bool) {
 	case errors.Is(err, auth.ErrInitialized):
 		a.fail(c, 409, 40900, "Administrator already initialized", nil)
 	case errors.Is(err, config.ErrInvalidDraft) || errors.Is(err, ports.ErrInvalidInput):
-		a.fail(c, 422, 42200, "Configuration validation failed", map[string]any{"fields": []model.FieldError{{Path: "config", Code: "invalid", Message: "check protocol options, limits, asset references and management endpoint"}}, "request_id": string(c.Response.Header.Peek("X-Request-ID"))})
+		a.fail(c, 422, 42200, "Configuration validation failed", map[string]any{"fields": []model.FieldError{{Path: "config", Code: "invalid", Message: "check protocol, routing, DNS, limits, asset references and management endpoint"}}, "request_id": string(c.Response.Header.Peek("X-Request-ID"))})
 	case errors.Is(err, auth.ErrInvalidInput):
 		a.fail(c, 422, 42200, "Invalid authentication input", nil)
 	case errors.Is(err, auth.ErrLimited):
@@ -151,42 +155,15 @@ func (a *API) error(c *app.RequestContext, err error, validation bool) {
 		a.fail(c, 404, 40400, "Resource not found", nil)
 	default:
 		if validation {
-			a.fail(c, 422, 42200, "Configuration or asset validation failed", map[string]any{"fields": []model.FieldError{{Path: "config", Code: "invalid", Message: "check protocol options, limits, references and reserved management endpoint"}}, "request_id": string(c.Response.Header.Peek("X-Request-ID"))})
+			a.fail(c, 422, 42200, "Configuration or asset validation failed", map[string]any{"fields": []model.FieldError{{Path: "config", Code: "invalid", Message: "check protocol, routing, DNS, limits, references and reserved management endpoint"}}, "request_id": string(c.Response.Header.Peek("X-Request-ID"))})
 		} else {
 			a.fail(c, 503, 50300, "Management service unavailable", nil)
 		}
 	}
 }
 func (a *API) decode(ctx context.Context, c *app.RequestContext, value any, limit int, optional bool) bool {
-	if c.Request.Header.ContentLength() > limit {
-		a.fail(c, 413, 41300, "Request body too large", nil)
-		return false
-	}
-	if encoding := string(c.Request.Header.Peek("Content-Encoding")); encoding != "" && encoding != "identity" {
-		a.fail(c, 415, 41500, "Content encoding is unsupported", nil)
-		return false
-	}
-	var reader io.Reader
-	if c.Request.IsBodyStream() {
-		reader = c.RequestBodyStream()
-	} else {
-		reader = bytes.NewReader(c.Request.Body())
-	}
-	conn := c.GetConn()
-	done := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() { _ = conn.SetReadTimeout(time.Nanosecond); close(done) })
-	defer func() {
-		if !stop() {
-			<-done
-		}
-	}()
-	body, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
-	if len(body) > limit {
-		a.fail(c, 413, 41300, "Request body too large", nil)
-		return false
-	}
-	if err != nil {
-		a.fail(c, 400, 40000, "Cannot read request body", nil)
+	body, ok := a.readBody(ctx, c, limit)
+	if !ok {
 		return false
 	}
 	if optional && len(bytes.TrimSpace(body)) == 0 {
@@ -254,4 +231,39 @@ func (a *API) pagination(c *app.RequestContext) (string, int, bool) {
 func (a *API) audit(ctx context.Context, message string) {
 	id, _ := ctx.Value(requestIDKey{}).(string)
 	a.logs.Add("info", message, id)
+}
+
+func (a *API) readBody(ctx context.Context, c *app.RequestContext, limit int) ([]byte, bool) {
+	if c.Request.Header.ContentLength() > limit {
+		a.fail(c, 413, 41300, "Request body too large", nil)
+		return nil, false
+	}
+	if encoding := string(c.Request.Header.Peek("Content-Encoding")); encoding != "" && encoding != "identity" {
+		a.fail(c, 415, 41500, "Content encoding is unsupported", nil)
+		return nil, false
+	}
+	var reader io.Reader
+	if c.Request.IsBodyStream() {
+		reader = c.RequestBodyStream()
+	} else {
+		reader = bytes.NewReader(c.Request.Body())
+	}
+	conn := c.GetConn()
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() { _ = conn.SetReadTimeout(time.Nanosecond); close(done) })
+	defer func() {
+		if !stop() {
+			<-done
+		}
+	}()
+	body, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
+	if len(body) > limit {
+		a.fail(c, 413, 41300, "Request body too large", nil)
+		return nil, false
+	}
+	if err != nil {
+		a.fail(c, 400, 40000, "Cannot read request body", nil)
+		return nil, false
+	}
+	return body, true
 }

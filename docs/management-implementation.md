@@ -153,3 +153,5 @@ python3 scripts/test-management.py
 全量回归额外复现并修复了既有 VLESS 原生 mux 的并发刷新问题：写入到达顺序不等于互斥锁获取顺序，基于到达计数的条件 flush 可能留下最后一批缓冲数据。现在每个持锁写入批次都完成 flush；并发 TCP/UDP 帧回归单独重复验证。
 
 2026-11-02 验证记录：`make check`、`make check-web`、独立管理二进制流程、Linux amd64/arm64 的核心/管理版 CGO=0 交叉编译和 Xray 的 96 个 VLESS 回环组合通过。全量检查曾出现一次既有 h2mux/WebSocket 组合超时，随后该组合单独重复 30 次及完整管理检查均通过；本阶段不将该偶发问题标为已修复。预览后监听失败、候选清理失败及资源所有权保留的回归另重复 30 次通过。
+
+路由、DNS 及 GeoData 已接入同一 API/SQLite 配置生命周期；GeoData 二进制上传上限 128 MiB，单次上传受独立并发限制，历史引用受删除保护。使用与验证见[路由和 DNS](routing-dns.md)。

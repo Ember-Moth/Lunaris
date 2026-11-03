@@ -13,7 +13,7 @@ func (a *API) systemVersion(_ context.Context, c *app.RequestContext) {
 }
 func (a *API) capabilities(_ context.Context, c *app.RequestContext) {
 	methods := append(append([]string{}, shadowsocks.Methods...), shadowaead_2022.List...)
-	reply(c, 200, 0, "ok", map[string]any{"schema_version": 1, "protocols": a.registry.Protocols().Capabilities(), "transports": a.registry.Transports().Capabilities(), "shadowsocks_methods": methods, "vless_flows": []string{"", "xtls-rprx-vision"}, "snell_versions": []int{5, 6}, "credential_kinds": credentialKinds, "connection_info_format": "parameters-v1"})
+	reply(c, 200, 0, "ok", map[string]any{"schema_version": 1, "protocols": a.registry.Protocols().Capabilities(), "transports": a.registry.Transports().Capabilities(), "shadowsocks_methods": methods, "vless_flows": []string{"", "xtls-rprx-vision"}, "snell_versions": []int{5, 6}, "credential_kinds": credentialKinds, "connection_info_format": "parameters-v1", "route_actions": []string{"direct", "block"}, "route_selectors": []string{"full", "suffix", "keyword", "regex", "cidr", "geosite", "geoip"}, "dns_protocols": []string{"udp", "tcp", "tls", "https"}, "dns_strategies": []string{"prefer_ipv4", "prefer_ipv6", "only_ipv4", "only_ipv6"}, "geodata_kinds": []string{"geosite", "geoip"}})
 }
 func (a *API) status(ctx context.Context, c *app.RequestContext) {
 	status, err := a.service.Status(ctx)

@@ -89,3 +89,9 @@ VLESS mux follow-up (2026-11-02): flush each serialized write batch before relea
 `internal/ingress/proxy_protocol*.go` and the Linux/macOS UDP ancillary helpers in `internal/ingress/udp_linux.go` and `udp_darwin.go` are adapted from Polaris commit `56d52fb44958ef3cc2a7fb841cd240f8206234b2`, `internal/runtime/proxy_protocol*.go` and the single-datagram helpers in `internal/runtime/udp_origin_{linux,darwin}.go`. Copyright (C) 2026 Polaris contributors; GPL-3.0-or-later. Source: <https://github.com/HyperPteLtd/Polaris/tree/56d52fb44958ef3cc2a7fb841cd240f8206234b2/internal/runtime>.
 
 Lunaris adaptations: per-connection preparation before TLS/camouflage; bounded shared UDP endpoint dispatch; immutable flow-origin propagation across multiplexing and QUIC streams; source-bound TCP and dual-family UDP egress; lifecycle and address-isolation tests. The direct-source policy also follows the principles in Polaris `internal/route/inbound.go` and `resolver.go`, without its panel or routing product layers.
+
+## Routing and DNS
+
+`internal/route` and `internal/dns` are adapted from Polaris commit `56d52fb44958ef3cc2a7fb841cd240f8206234b2`, with the original matching/index algorithms, GeoData protobuf parsing, DNS wire/transports/cache code and applicable regression fixtures. Copyright (C) 2026 Polaris contributors; GPL-3.0-or-later. Sources: <https://github.com/HyperPteLtd/Polaris/tree/56d52fb44958ef3cc2a7fb841cd240f8206234b2/internal/route> and <https://github.com/HyperPteLtd/Polaris/tree/56d52fb44958ef3cc2a7fb841cd240f8206234b2/internal/dns>.
+
+Lunaris adaptations: application-owned direct/block actions; no panel or proxy-outbound dependency; immutable SQLite GeoData instead of environment/path discovery; configuration-generation ownership and resolver shutdown; bounded coalescing and cancellation isolation; per-datagram policy checks; source-preserving DNS transport with independent bootstrap resolution; stricter asset validation and failure handling.
