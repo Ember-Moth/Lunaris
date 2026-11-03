@@ -1,8 +1,8 @@
 # 路由、DNS 与 GeoData
 
-路由匹配器、索引、GeoSite/GeoIP 解码及 DNS 传输/缓存移植自 Polaris `56d52fb44958ef3cc2a7fb841cd240f8206234b2` 的 `internal/route` 与 `internal/dns`。Lunaris 使用自己的 JSON 配置、SQLite 资产和配置应用服务，不引入面板、计费、用户控制面或代理出站客户端。
+路由匹配器、索引、GeoSite/GeoIP 解码及 DNS 传输/缓存移植自 Polaris `56d52fb44958ef3cc2a7fb841cd240f8206234b2` 的 `internal/route` 与 `internal/dns`。Lunaris 使用自己的 JSON 配置、SQLite 资产和配置应用服务，不引入面板、计费或用户控制面。后续代理出站实现见[代理出站](outbounds.md)。
 
-当前出口范围是 **direct、block，以及代理 UDP/53 的 DNS 处理**。DNS 支持 UDP、TCP、DoT 和 DoH；DoQ/QUIC DNS 明确拒绝。没有新增公网 DNS 监听端口、FakeIP、流量目标嗅探、代理链或客户端策略组。
+路由支持 **direct、block、指定代理出站，以及代理 UDP/53 的 DNS 处理**。DNS 支持 UDP、TCP、DoT 和 DoH；DoQ/QUIC DNS 明确拒绝。没有新增公网 DNS 监听端口、FakeIP、流量目标嗅探、代理链或客户端策略组。
 
 ## JSON 配置
 
@@ -33,8 +33,8 @@
 
 ## 路由语义
 
-- `block` 作为最前面的阻断规则；之后按 `rules` 声明顺序匹配，最早命中的规则生效，未命中默认直连。
-- 同一规则的 `match` 项是 OR 条件。action 仅接受 `direct` 或 `block`；其他出站不会静默跳过或回退成直连。
+- `block` 作为最前面的阻断规则；之后按 `rules` 声明顺序匹配，最早命中的规则生效，未命中使用 `route.final`，省略时直连。
+- 同一规则的 `match` 项是 OR 条件。action 接受 `direct`、`block`，以及引用 `outbound` ID 的 `route`；错误引用不会跳过或回退成直连。
 - 域名支持 `full:`、`suffix:`/`domain:`、`keyword:`/`plain:`、`regex:`/`regexp:`。裸域名是完整匹配；域名小写并移除末尾点，正则不区分大小写。
 - IP 支持 `ip:`、`cidr:`、裸 IP/CIDR 和 `geoip:`。`geoip:private` 使用内置集合，无需上传数据文件。
 - `geosite:分类` 支持源模块的布尔属性选择，例如 `geosite:category@cn`；其他分类来自当前版本绑定的资产。

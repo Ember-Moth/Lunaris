@@ -149,3 +149,5 @@ Content-Type: application/json
 ## 路由、DNS 与 GeoData
 
 `config.route`、`config.dns`、`config.geodata` 与监听器一起保存、校验和应用。`GET /capabilities` 提供支持的动作、选择器、DNS 协议和地址策略。新增 `GET /geodata`、`POST /geodata?kind=geosite|geoip&label=...`、`DELETE /geodata/{id}`；上传使用有界 application/octet-stream 原始内容，响应保持 JSON 信封。具体字段与约束见 [OpenAPI](../api/openapi.yaml) 和[实现说明](routing-dns.md)。
+
+`config.outbounds` 定义代理客户端，`route.rules[].outbound` 与 `route.final` 引用其 ID。密码继续使用 credential_assets；capabilities.outbound_protocols 返回协议能力。契约见[代理出站](outbounds.md)。

@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
+	"github.com/Ember-Moth/Lunaris/internal/policy"
 )
 
 type Change struct {
@@ -45,13 +46,14 @@ func (r *Runtime) fingerprint(snapshot *model.RuntimeConfig, spec model.Listener
 		credentials[ref] = snapshot.Credentials[ref]
 	}
 	content, _ := json.Marshal(struct {
-		Policy      string
-		Spec        model.ListenerSpec
-		Limits      model.Limits
-		Credentials map[string][]byte
-		Certificate []byte
-		PrivateKey  []byte
-	}{snapshot.PolicyDigest, spec, limits, credentials, snapshot.Certificates[spec.CertificateRef].Certificate, snapshot.Certificates[spec.CertificateRef].PrivateKey})
+		Policy              string
+		Spec                model.ListenerSpec
+		Limits              model.Limits
+		Credentials         map[string][]byte
+		OutboundCredentials map[string][]byte
+		Certificate         []byte
+		PrivateKey          []byte
+	}{snapshot.PolicyDigest, spec, limits, credentials, policy.OutboundCredentials(snapshot), snapshot.Certificates[spec.CertificateRef].Certificate, snapshot.Certificates[spec.CertificateRef].PrivateKey})
 	mac := hmac.New(sha256.New, r.fingerprintKey[:])
 	_, _ = mac.Write(content)
 	return hex.EncodeToString(mac.Sum(nil))

@@ -112,6 +112,8 @@ type Config struct {
 	GeoData *Catalog
 	Logger  *slog.Logger
 	Trace   func(DecisionTrace)
+	Targets []Target
+	Final   Target
 }
 
 type rule struct {
@@ -132,11 +134,26 @@ type Snapshot struct {
 	geoDataVersions []geoDataVersion
 	stats           CompileStats
 	trace           func(DecisionTrace)
+	final           Target
 }
 
 // Compile validates routing configuration without mutating an active router.
 func Compile(config Config) (*Snapshot, error) {
 	started := time.Now()
+	targets := map[Target]bool{Direct: true, Block: true}
+	for _, target := range config.Targets {
+		if target == "" || target == DNS || targets[target] {
+			return nil, fmt.Errorf("route: invalid or duplicate outbound target")
+		}
+		targets[target] = true
+	}
+	final := config.Final
+	if final == "" {
+		final = Direct
+	}
+	if !targets[final] {
+		return nil, fmt.Errorf("route: final outbound is not configured")
+	}
 	block, err := compileRuleSelectors(config.Block, config.GeoData)
 	if err != nil {
 		return nil, err
@@ -147,7 +164,12 @@ func Compile(config Config) (*Snapshot, error) {
 	}
 	for index, item := range config.Rules {
 		target := Target(item.Action)
-		if target != Direct && target != Block {
+		if item.Action == "route" {
+			target = Target(item.Outbound)
+			if target == Direct || target == Block || !targets[target] {
+				return nil, fmt.Errorf("route: rule %d references an unknown outbound", index)
+			}
+		} else if (target != Direct && target != Block) || item.Outbound != "" {
 			return nil, fmt.Errorf("route: rule %d has unsupported action", index)
 		}
 		selectors, err := compileRuleSelectors(item.Match, config.GeoData)
@@ -160,6 +182,11 @@ func Compile(config Config) (*Snapshot, error) {
 		rules = append(rules, rule{target: target, selectors: selectors})
 	}
 	snapshot := compileSnapshot(rules)
+	snapshot.final = final
+	if final != Direct {
+		sum := sha256.Sum256([]byte(snapshot.hash + "\x00" + string(final)))
+		snapshot.hash = hex.EncodeToString(sum[:])
+	}
 	snapshot.stats.CompileDuration = time.Since(started)
 	snapshot.trace = config.Trace
 	return snapshot, nil
@@ -360,7 +387,7 @@ func MustCompile(config Config) *Snapshot {
 // Hash identifies immutable compiled configuration without exposing secrets.
 func (snapshot *Snapshot) Hash() string { return snapshot.hash }
 
-// Route applies block/custom rules in declaration order, then direct.
+// Route applies ordered rules, then the configured final target (default direct).
 func (snapshot *Snapshot) Route(request Request) Decision {
 	domain := normalizeDomain(request.Domain)
 	best, kind := snapshot.matchDomain(domain, len(snapshot.rules))
@@ -447,7 +474,11 @@ func (snapshot *Snapshot) decision(index int, kind MatchKind) Decision {
 	if index >= 0 && index < len(snapshot.rules) {
 		return Decision{Target: snapshot.rules[index].target, RuleIndex: index, Match: kind}
 	}
-	return Decision{Target: Direct, RuleIndex: -1, Match: MatchDefault}
+	final := snapshot.final
+	if final == "" {
+		final = Direct
+	}
+	return Decision{Target: final, RuleIndex: -1, Match: MatchDefault}
 }
 
 // Router atomically publishes compiled route snapshots.

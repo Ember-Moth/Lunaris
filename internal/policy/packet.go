@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/route"
 	"github.com/sagernet/sing/common/buf"
+	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/pipe"
@@ -35,6 +37,7 @@ type packetConn struct {
 	mu            sync.Mutex
 	closed        bool
 	direct        net.PacketConn
+	proxies       map[string]N.NetPacketConn
 	allowed       map[netip.AddrPort]bool
 	destinations  map[string]bool
 	writeDeadline time.Time
@@ -47,7 +50,7 @@ type packetConn struct {
 
 func newPacketConn(ctx context.Context, g *Generation, limits model.Limits) *packetConn {
 	ctx, cancel := context.WithCancel(ctx)
-	return &packetConn{ctx: ctx, cancel: cancel, generation: g, limits: limits, allowed: map[netip.AddrPort]bool{}, destinations: map[string]bool{}, readDeadline: pipe.MakeDeadline(), responses: make(chan packetResponse, 1)}
+	return &packetConn{ctx: ctx, cancel: cancel, generation: g, limits: limits, allowed: map[netip.AddrPort]bool{}, destinations: map[string]bool{}, proxies: map[string]N.NetPacketConn{}, readDeadline: pipe.MakeDeadline(), responses: make(chan packetResponse, 1)}
 }
 func (c *packetConn) operation() (context.Context, context.CancelFunc) {
 	c.mu.Lock()
@@ -98,6 +101,26 @@ func (c *packetConn) write(p []byte, dst M.Socksaddr) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+	if decision.Target != route.Direct {
+		original := dst
+		if dst.IsFqdn() && len(decision.Addresses) > 0 {
+			dst = M.Socksaddr{Addr: decision.Addresses[0].Unmap(), Port: dst.Port}
+		}
+		key := string(decision.Target) + "\x00" + original.String() + "\x00" + dst.String()
+		if err := c.admit(key); err != nil {
+			return err
+		}
+		socket, err := c.proxySocket(ctx, key, decision.Target, original, dst)
+		if err != nil {
+			return err
+		}
+		deadline, _ := ctx.Deadline()
+		if err = socket.SetWriteDeadline(deadline); err != nil {
+			return err
+		}
+		_, err = socket.WriteTo(p, dst)
+		return err
 	}
 	if dst.IsFqdn() {
 		addresses, found := route.ResolvedAddressesFromContext(ctx, dst.Fqdn)
@@ -263,10 +286,85 @@ func (c *packetConn) Close() error {
 		if c.direct != nil {
 			c.direct.Close()
 		}
+		proxies := make([]N.NetPacketConn, 0, len(c.proxies))
+		for _, socket := range c.proxies {
+			proxies = append(proxies, socket)
+		}
 		c.mu.Unlock()
+		for _, socket := range proxies {
+			socket.Close()
+		}
 		c.wg.Wait()
 	})
 	return nil
+}
+
+// A proxy UDP session belongs to one destination and outbound. Keeping remote
+// DNS replies on that session avoids accepting unrelated targets merely because
+// another packet in the association selected the same proxy.
+func (c *packetConn) proxySocket(ctx context.Context, key string, target route.Target, original, dst M.Socksaddr) (N.NetPacketConn, error) {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil, net.ErrClosed
+	}
+	if existing := c.proxies[key]; existing != nil {
+		c.mu.Unlock()
+		return existing, nil
+	}
+	c.mu.Unlock()
+	client, ok := c.generation.outbounds[target]
+	if !ok {
+		return nil, errors.New("selected outbound is unavailable")
+	}
+	raw, err := client.ListenPacket(ctx, dst)
+	if err != nil {
+		return nil, err
+	}
+	socket := bufio.NewPacketConn(raw)
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		socket.Close()
+		return nil, net.ErrClosed
+	}
+	c.proxies[key] = socket
+	c.wg.Add(1)
+	c.mu.Unlock()
+	go func() {
+		defer c.wg.Done()
+		buffer := buf.NewSize(65535)
+		defer buffer.Release()
+		for {
+			buffer.Reset()
+			source, err := socket.ReadPacket(buffer)
+			if err != nil {
+				select {
+				case c.responses <- packetResponse{err: err}:
+				case <-c.ctx.Done():
+				}
+				return
+			}
+			source = source.Unwrap()
+			if source.Port != dst.Port || !source.IsValid() {
+				continue
+			}
+			if dst.IsFqdn() {
+				if source.IsFqdn() && !strings.EqualFold(strings.TrimSuffix(source.Fqdn, "."), strings.TrimSuffix(dst.Fqdn, ".")) {
+					continue
+				}
+			} else if source.Addr.Unmap() != dst.Addr.Unmap() {
+				continue
+			}
+			value := packetResponse{data: append([]byte(nil), buffer.Bytes()...), source: original}
+			select {
+			case c.responses <- value:
+			case <-c.ctx.Done():
+				return
+			}
+		}
+	}()
+	return socket, nil
 }
 func exchangeOriginalDNS(ctx context.Context, dst M.Socksaddr, query []byte) ([]byte, error) {
 	connection, err := (&egress.Direct{}).DialContext(ctx, "udp", dst)

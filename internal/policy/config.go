@@ -15,6 +15,7 @@ import (
 
 	dnsmod "github.com/Ember-Moth/Lunaris/internal/dns"
 	"github.com/Ember-Moth/Lunaris/internal/model"
+	"github.com/Ember-Moth/Lunaris/internal/outbound"
 	"github.com/Ember-Moth/Lunaris/internal/route"
 )
 
@@ -28,6 +29,24 @@ type prepared struct {
 // Normalize owns configuration containers; large GeoData materials are immutable.
 func Normalize(snapshot *model.RuntimeConfig) error {
 	cfg := &snapshot.Config
+	if len(cfg.Outbounds) > 64 {
+		return errors.New("too many outbounds")
+	}
+	cfg.Outbounds = slices.Clone(cfg.Outbounds)
+	ids := make(map[string]bool)
+	registry := outbound.NewRegistry()
+	for i, spec := range cfg.Outbounds {
+		if ids[spec.ID] {
+			return errors.New("duplicate outbound id")
+		}
+		ids[spec.ID] = true
+		normalized, err := registry.Normalize(spec, snapshot.Credentials)
+		if err != nil {
+			return err
+		}
+		cfg.Outbounds[i] = normalized
+	}
+	slices.SortFunc(cfg.Outbounds, func(a, b model.OutboundSpec) int { return strings.Compare(a.ID, b.ID) })
 	cfg.GeoData = maps.Clone(cfg.GeoData)
 	snapshot.GeoData = maps.Clone(snapshot.GeoData)
 	if len(cfg.GeoData) == 0 {
@@ -57,8 +76,8 @@ func Normalize(snapshot *model.RuntimeConfig) error {
 		}
 		for i := range copy.Rules {
 			copy.Rules[i].Match = slices.Clone(copy.Rules[i].Match)
-			if (copy.Rules[i].Action != "direct" && copy.Rules[i].Action != "block") || len(copy.Rules[i].Match) == 0 {
-				return fmt.Errorf("route rule %d requires direct/block and a match", i)
+			if (copy.Rules[i].Action != "direct" && copy.Rules[i].Action != "block" && copy.Rules[i].Action != "route") || len(copy.Rules[i].Match) == 0 {
+				return fmt.Errorf("route rule %d requires direct/block/route and a match", i)
 			}
 			if err := selectors(copy.Rules[i].Match); err != nil {
 				return err
@@ -117,7 +136,7 @@ func Normalize(snapshot *model.RuntimeConfig) error {
 		}
 		cfg.DNS = &copy
 	}
-	if cfg.Route == nil && cfg.DNS == nil && len(cfg.GeoData) == 0 {
+	if cfg.Route == nil && cfg.DNS == nil && len(cfg.GeoData) == 0 && len(cfg.Outbounds) == 0 {
 		snapshot.PolicyDigest = ""
 		return nil
 	}
@@ -126,12 +145,13 @@ func Normalize(snapshot *model.RuntimeConfig) error {
 		return err
 	}
 	snapshot.PolicyDigest = ""
-	if cfg.Route != nil || cfg.DNS != nil || len(cfg.GeoData) > 0 {
+	if cfg.Route != nil || cfg.DNS != nil || len(cfg.GeoData) > 0 || len(cfg.Outbounds) > 0 {
 		raw, _ := json.Marshal(struct {
 			Route, DNS string
 			Config     model.DNSConfig
 			Assets     map[string]string
-		}{Route: p.routes.Hash(), DNS: p.dns.Hash(), Config: dnsConfig(snapshot), Assets: cfg.GeoData})
+			Outbounds  []model.OutboundSpec
+		}{Route: p.routes.Hash(), DNS: p.dns.Hash(), Config: dnsConfig(snapshot), Assets: cfg.GeoData, Outbounds: runtimeOutbounds(cfg.Outbounds)})
 		sum := sha256.Sum256(raw)
 		snapshot.PolicyDigest = hex.EncodeToString(sum[:])
 	}
@@ -175,9 +195,13 @@ func compile(snapshot *model.RuntimeConfig) (*prepared, error) {
 		return nil, err
 	}
 	routing := route.Config{GeoData: catalog}
+	for _, spec := range snapshot.Config.Outbounds {
+		routing.Targets = append(routing.Targets, route.Target(spec.ID))
+	}
 	if value := snapshot.Config.Route; value != nil {
 		routing.Block = value.Block
 		routing.Rules = value.Rules
+		routing.Final = route.Target(value.Final)
 	}
 	routes, err := route.Compile(routing)
 	if err != nil {
@@ -189,4 +213,13 @@ func compile(snapshot *model.RuntimeConfig) (*prepared, error) {
 		return nil, err
 	}
 	return &prepared{routes: routes, dns: dns, options: dnsmod.Options{Timeout: config.Timeout, Preference: dnsmod.Preference(config.Strategy), SystemLookupTTL: config.SystemCacheTTL}, hijack: config.HijackUDP53}, nil
+}
+
+// Labels do not change a running connection or generation.
+func runtimeOutbounds(specs []model.OutboundSpec) []model.OutboundSpec {
+	result := slices.Clone(specs)
+	for i := range result {
+		result[i].Name = ""
+	}
+	return result
 }

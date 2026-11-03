@@ -33,7 +33,7 @@ Lunaris 面向个人自用、自托管：在自己的服务器安装一个程序
 
 选择 SQLite 是为了将配置版本、引用和操作提交放在同一事务中；此处属于应用本地存储，符合 SQLite 的定位。[SQLite 用途](https://sqlite.org/whentouse.html)。`modernc.org/sqlite` 提供不依赖 CGo 的驱动，具体版本与平台构建需要在接入时锁定和验证。[驱动文档](https://pkg.go.dev/modernc.org/sqlite)。
 
-不建设机场面板对接、套餐和计费上报、多租户、跨节点调度、TUN、系统代理或客户端策略组。多份协议凭据只是本机配置，不扩展为统一用户中心。当前支持直连、阻断和 DNS 处理；代理出站、中转、自动证书、无中断更新按实际需求追加。
+不建设机场面板对接、套餐和计费上报、多租户、跨节点调度、TUN、系统代理或客户端策略组。多份协议凭据只是本机配置，不扩展为统一用户中心。当前支持直连、阻断、DNS 处理，以及 SOCKS5、HTTP CONNECT、Shadowsocks 代理出站，见[代理出站](outbounds.md)。多跳出站链、自动证书、无中断更新按实际需求追加。
 
 ## 2. 运行结构
 
@@ -54,7 +54,7 @@ flowchart TB
     Native --> Sing
     Sing --> Relay[TCP / UDP 转发]
     Relay --> Policy[配置代次内的路由与 DNS]
-    Policy --> Egress[直连 / 阻断 / DNS 处理]
+    Policy --> Egress[直连 / 阻断 / DNS / 代理出站]
     Egress --> Destination[目标服务]
     Runtime --> Observe
     Relay --> Observe
@@ -75,7 +75,9 @@ flowchart TB
 | `node` | 活动实例、运行代次、状态收集、启停与补偿恢复 | 不依赖 HTTP 路由和数据库实现 |
 | `protocol` | sing-xxx 适配或基于 sing 的独立协议实现、认证与生命周期 | 必须使用 sing 基建；不依赖管理 API 和存储 |
 | `transport` | TCP/UDP socket、TLS 适配、资源跟踪 | 不建设任意传输组合平台 |
-| `relay` / `egress` | TCP/UDP 转发、路由与 DNS 适配、选源、拨号和超时 | 不理解管理员、草稿或配置事务 |
+| `relay` / `egress` | TCP/UDP 转发、选源、底层拨号和超时 | 不理解管理员、草稿或配置事务 |
+| `policy` / `route` / `dns` | 配置代次、逐包选路、解析与缓存 | 不读取管理数据库 |
+| `outbound` | 出站工厂、能力校验、协议客户端和连接回收 | 注入底层拨号器，不复用入站配置结构 |
 | `observability` | 有界日志、聚合计数、运行快照 | 不在数据路径上写计费数据库 |
 
 接口由使用方定义，只在需要替换上游适配或模拟故障的位置引入。根目录 `main.go` 负责进程入口和信号，`cmd/run.go` 负责命令分发与依赖组装，显式注入依赖；不使用全局服务定位器和隐式插件注册。
@@ -101,7 +103,8 @@ internal/
     <protocol>/              独立实现同样放在协议目录，基于 sing
   transport/                 socket、TLS、资源跟踪
   relay/                     TCP 与 UDP 数据转发
-  egress/                    解析与直接出口
+  egress/                    底层解析、选源与直接拨号
+  outbound/                  代理协议客户端与连接回收
   observability/             日志、状态、计数
 web/
   embed.go                   嵌入 dist 并提供 fs.FS

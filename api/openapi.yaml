@@ -143,6 +143,11 @@ components:
                         type: string
                     maxItems: 2
                     type: array
+                outbound_protocols:
+                    type: array
+                    maxItems: 3
+                    items:
+                        $ref: '#/components/schemas/OutboundCapability'
                 protocols:
                     items:
                         $ref: '#/components/schemas/ProtocolCapability'
@@ -152,8 +157,9 @@ components:
                         enum:
                             - direct
                             - block
+                            - route
                         type: string
-                    maxItems: 2
+                    maxItems: 3
                     type: array
                 route_selectors:
                     items:
@@ -200,6 +206,7 @@ components:
                 - credential_kinds
                 - connection_info_format
                 - route_actions
+                - outbound_protocols
                 - route_selectors
                 - dns_protocols
                 - dns_strategies
@@ -1664,6 +1671,11 @@ components:
                         $ref: '#/components/schemas/Listener'
                     maxItems: 1024
                     type: array
+                outbounds:
+                    type: array
+                    maxItems: 64
+                    items:
+                        $ref: '#/components/schemas/Outbound'
                 route:
                     anyOf:
                         - $ref: '#/components/schemas/RouteConfig'
@@ -1675,6 +1687,86 @@ components:
             required:
                 - listeners
             type: object
+        OutboundCapability:
+            type: object
+            additionalProperties: false
+            required: [protocol, tcp, udp]
+            properties:
+                protocol:
+                    type: string
+                    enum: [socks5, http, shadowsocks]
+                tcp:
+                    type: boolean
+                udp:
+                    type: boolean
+                methods:
+                    type: array
+                    items:
+                        type: string
+        Outbound:
+            type: object
+            additionalProperties: false
+            required: [id, protocol, address, port]
+            properties:
+                id:
+                    type: string
+                    minLength: 1
+                    maxLength: 64
+                    pattern: '^[a-zA-Z0-9_-]+$'
+                    description: Unique id; direct, block and dns are reserved.
+                name:
+                    type: string
+                    maxLength: 256
+                protocol:
+                    type: string
+                    enum: [socks5, http, shadowsocks]
+                address:
+                    type: string
+                    minLength: 1
+                    maxLength: 253
+                    description: Proxy hostname or unbracketed IP address, without port or URL scheme.
+                port:
+                    type: integer
+                    minimum: 1
+                    maximum: 65535
+                credential_ref:
+                    type: string
+                    maxLength: 128
+                    description: Logical credential_assets alias. Required for Shadowsocks or authenticated SOCKS5/HTTP.
+                options:
+                    oneOf:
+                        - $ref: '#/components/schemas/ProxyAuthOptions'
+                        - $ref: '#/components/schemas/ShadowsocksOutboundOptions'
+            allOf:
+                - if:
+                      properties:
+                          protocol:
+                              const: shadowsocks
+                  then:
+                      required: [credential_ref, options]
+                      properties:
+                          options:
+                              $ref: '#/components/schemas/ShadowsocksOutboundOptions'
+                  else:
+                      properties:
+                          options:
+                              $ref: '#/components/schemas/ProxyAuthOptions'
+        ProxyAuthOptions:
+            type: object
+            additionalProperties: false
+            properties:
+                username:
+                    type: string
+                    maxLength: 255
+                    description: Must be paired with credential_ref; omit both for anonymous access.
+        ShadowsocksOutboundOptions:
+            type: object
+            additionalProperties: false
+            required: [method]
+            properties:
+                method:
+                    type: string
+                    enum: [aes-128-gcm, aes-256-gcm, chacha20-ietf-poly1305, 2022-blake3-aes-128-gcm, 2022-blake3-aes-256-gcm, 2022-blake3-chacha20-poly1305]
         Operation:
             additionalProperties: false
             properties:
@@ -1931,6 +2023,11 @@ components:
                         type: string
                     maxItems: 8192
                     type: array
+                final:
+                    type: string
+                    maxLength: 64
+                    default: direct
+                    description: Built-in direct/block or an existing outbound id. DNS remains controlled by hijack_udp53.
                 rules:
                     items:
                         $ref: '#/components/schemas/RouteRule'
@@ -1945,7 +2042,13 @@ components:
                     enum:
                         - direct
                         - block
+                        - route
                     type: string
+                outbound:
+                    type: string
+                    maxLength: 64
+                    minLength: 1
+                    description: Required only for action=route; references a configured proxy outbound.
                 match:
                     items:
                         maxLength: 4096

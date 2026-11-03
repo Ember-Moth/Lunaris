@@ -1,0 +1,47 @@
+{
+  "config": {
+    "schema_version": 1,
+    "listeners": [
+      {
+        "id": "ss",
+        "enabled": true,
+        "protocol": "shadowsocks",
+        "address": "0.0.0.0",
+        "port": 8388,
+        "network": [
+          "tcp",
+          "udp"
+        ],
+        "credential_refs": [
+          "client-password"
+        ],
+        "options": {
+          "method": "aes-128-gcm"
+        }
+      }
+    ],
+    "outbounds": [
+      {
+        "id": "upstream",
+        "protocol": "socks5",
+        "address": "proxy.example.com",
+        "port": 1080,
+        "credential_ref": "upstream-password",
+        "options": {
+          "username": "alice"
+        }
+      }
+    ],
+    "route": {
+      "final": "upstream",
+      "block": [
+        "suffix:blocked.example"
+      ]
+    }
+  },
+  "credential_assets": {
+    "client-password": "cred_replace_with_client_asset_id",
+    "upstream-password": "cred_replace_with_upstream_asset_id"
+  },
+  "certificate_assets": {}
+}

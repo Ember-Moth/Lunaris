@@ -53,6 +53,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 - [Polaris 参考对照](docs/polaris-reference.md)：可采用的协议与生命周期经验，以及本地补丁的复用边界。
 - [开发计划](docs/development-plan.md)：先完成节点核心，再实现 HTTP API 与 Web。
 - [路由、DNS 与 GeoData](docs/routing-dns.md)：有序规则、直连/阻断、DNS 上游与不可变规则资产。
+- [代理出站](docs/outbounds.md)：SOCKS5、HTTP CONNECT、Shadowsocks、路由引用和凭据轮换。
 - [源进源出与 PROXY protocol](docs/ingress-addresses.md)：自动地址识别、出站选源、UDP 多入口与信任边界。
 - [运行时差异应用与状态](docs/runtime-reload.md)：SIGHUP、凭据轮换、差异重建与失败恢复。
 - [UoT、mux 与 REALITY](docs/connection-extensions.md)：多路复用、旧客户端兼容、密钥配置与生命周期。
@@ -62,7 +63,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 
 ## 当前状态
 
-已实现节点核心、运行管理、持久化配置服务，以及首批协议与传输扩展。代理配置统一持久化在 SQLite，通过结构化 JSON API 编辑、校验和应用；已接入有序路由规则、直连/阻断、UDP/TCP/DoT/DoH 解析和可选代理 UDP/53 处理；共享转发、直接出口、资源限制和凭据/证书轮换复用同一运行时。
+已实现节点核心、运行管理、持久化配置服务，以及首批协议与传输扩展。代理配置统一持久化在 SQLite，通过结构化 JSON API 编辑、校验和应用；已接入有序路由规则、直连/阻断、SOCKS5/HTTP CONNECT/Shadowsocks 出站、UDP/TCP/DoT/DoH 解析和可选代理 UDP/53 处理；共享转发、直接出口、资源限制和凭据/证书轮换复用同一运行时。
 
 新增 VLESS、VMess、Trojan、AnyTLS、Hysteria2、TUIC；支持 TCP/TLS、WebSocket、HTTPUpgrade、原生 QUIC、REALITY 和 XHTTP；已接入 UoT 与 smux/yamux/h2mux。具体组合见[支持矩阵](docs/protocols.md)，配置见 [protocols.json](examples/protocols.json)。
 

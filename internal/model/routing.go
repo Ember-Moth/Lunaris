@@ -13,10 +13,12 @@ import (
 type RouteConfig struct {
 	Block []string    `json:"block,omitempty"`
 	Rules []RouteRule `json:"rules,omitempty"`
+	Final string      `json:"final,omitempty"`
 }
 type RouteRule struct {
-	Action string   `json:"action"`
-	Match  []string `json:"match"`
+	Action   string   `json:"action"`
+	Outbound string   `json:"outbound,omitempty"`
+	Match    []string `json:"match"`
 }
 type DNSConfig struct {
 	Servers        []DNSServer   `json:"servers,omitempty"`

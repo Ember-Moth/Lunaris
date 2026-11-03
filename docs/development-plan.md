@@ -198,3 +198,12 @@ UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadows
 不包含代理出站客户端、公开 DNS 监听、FakeIP 或 DoQ；契约与验证入口见[路由和 DNS](routing-dns.md)。
 
 本轮完整 vet/race、Web 构建/lint、DNS wire 模糊测试、独立进程路由/管理/源地址回归及 Linux 双架构核心/管理交叉编译通过。实际运行平台、备份恢复证据与 H3 偶发测试的限制见上述验证记录。
+
+## 首批代理出站
+
+- [x] 独立出站注册表、凭据资产引用、有序路由引用与最终出站。
+- [x] SOCKS5 TCP/UDP、HTTP CONNECT TCP、Shadowsocks classic AEAD/2022 TCP/UDP。
+- [x] 代次持有与回收、密码轮换断连确认、失败不回落直连。
+- [x] UDP 逐包出口与资源限制、远端域名解析及 IP 规则固定解析结果。
+
+能力矩阵、API 请求和验收方式见[代理出站](outbounds.md)。TLS/HTTPS CONNECT、插件、mux/UoT、多用户 SS2022 身份链和多跳出站不在首批范围内。

@@ -503,8 +503,9 @@ export interface components {
             dns_protocols: ("udp" | "tcp" | "tls" | "https")[];
             dns_strategies: ("prefer_ipv4" | "prefer_ipv6" | "only_ipv4" | "only_ipv6")[];
             geodata_kinds: ("geosite" | "geoip")[];
+            outbound_protocols: components["schemas"]["OutboundCapability"][];
             protocols: components["schemas"]["ProtocolCapability"][];
-            route_actions: ("direct" | "block")[];
+            route_actions: ("direct" | "block" | "route")[];
             route_selectors: ("full" | "suffix" | "keyword" | "regex" | "cidr" | "geosite" | "geoip")[];
             /** @constant */
             schema_version: 1;
@@ -1005,12 +1006,41 @@ export interface components {
             geodata?: components["schemas"]["GeoDataBindings"];
             limits?: components["schemas"]["Limits"];
             listeners: components["schemas"]["Listener"][];
+            outbounds?: components["schemas"]["Outbound"][];
             route?: components["schemas"]["RouteConfig"] | null;
             /**
              * @default 1
              * @constant
              */
             schema_version: 1;
+        };
+        OutboundCapability: {
+            /** @enum {string} */
+            protocol: "socks5" | "http" | "shadowsocks";
+            tcp: boolean;
+            udp: boolean;
+            methods?: string[];
+        };
+        Outbound: {
+            /** @description Unique id; direct, block and dns are reserved. */
+            id: string;
+            name?: string;
+            /** @enum {string} */
+            protocol: "socks5" | "http" | "shadowsocks";
+            /** @description Proxy hostname or unbracketed IP address, without port or URL scheme. */
+            address: string;
+            port: number;
+            /** @description Logical credential_assets alias. Required for Shadowsocks or authenticated SOCKS5/HTTP. */
+            credential_ref?: string;
+            options?: components["schemas"]["ProxyAuthOptions"] | components["schemas"]["ShadowsocksOutboundOptions"];
+        } & unknown;
+        ProxyAuthOptions: {
+            /** @description Must be paired with credential_ref; omit both for anonymous access. */
+            username?: string;
+        };
+        ShadowsocksOutboundOptions: {
+            /** @enum {string} */
+            method: "aes-128-gcm" | "aes-256-gcm" | "chacha20-ietf-poly1305" | "2022-blake3-aes-128-gcm" | "2022-blake3-aes-256-gcm" | "2022-blake3-chacha20-poly1305";
         };
         Operation: {
             base_revision: string;
@@ -1084,11 +1114,18 @@ export interface components {
         };
         RouteConfig: {
             block?: string[];
+            /**
+             * @description Built-in direct/block or an existing outbound id. DNS remains controlled by hijack_udp53.
+             * @default direct
+             */
+            final: string;
             rules?: components["schemas"]["RouteRule"][];
         };
         RouteRule: {
             /** @enum {string} */
-            action: "direct" | "block";
+            action: "direct" | "block" | "route";
+            /** @description Required only for action=route; references a configured proxy outbound. */
+            outbound?: string;
             match: string[];
         };
         RuntimeStatus: {

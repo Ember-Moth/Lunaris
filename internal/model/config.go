@@ -81,6 +81,7 @@ type Certificate struct {
 type NodeConfig struct {
 	SchemaVersion int               `json:"schema_version"`
 	Listeners     []ListenerSpec    `json:"listeners"`
+	Outbounds     []OutboundSpec    `json:"outbounds,omitempty"`
 	Limits        Limits            `json:"limits"`
 	Route         *RouteConfig      `json:"route,omitempty"`
 	DNS           *DNSConfig        `json:"dns,omitempty"`
