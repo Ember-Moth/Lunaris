@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 )
@@ -400,8 +401,8 @@ func (server *Server) writeResponseHeaders(writer http.ResponseWriter, request *
 }
 
 func sourceAddress(request *http.Request) M.Socksaddr {
-	// Lunaris has no trusted-proxy configuration: peer headers cannot replace
-	// the source address used by protocol authentication and accounting.
+	// Use only the socket endpoint (possibly restored by the TCP PROXY reader).
+	// HTTP forwarding headers cannot replace protocol source metadata.
 	return M.ParseSocksaddr(request.RemoteAddr).Unwrap()
 }
 
@@ -413,5 +414,5 @@ func (server *Server) requestFlow(request *http.Request) (context.Context, net.A
 	if local == nil {
 		local = M.Socksaddr{}
 	}
-	return server.ctx, local
+	return ingress.WithLocal(server.ctx, local), local
 }

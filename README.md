@@ -52,6 +52,7 @@ Lunaris 也不承担桌面或移动端 VPN、TUN、系统代理、客户端策�
 - [管理 API 契约](docs/management-api.md)：初始化、认证、配置、资产、状态与幂等交互。
 - [Polaris 参考对照](docs/polaris-reference.md)：可采用的协议与生命周期经验，以及本地补丁的复用边界。
 - [开发计划](docs/development-plan.md)：先完成节点核心，再实现 HTTP API 与 Web。
+- [源进源出与 PROXY protocol](docs/ingress-addresses.md)：自动地址识别、出站选源、UDP 多入口与信任边界。
 - [运行时差异应用与状态](docs/runtime-reload.md)：SIGHUP、凭据轮换、差异重建与失败恢复。
 - [UoT、mux 与 REALITY](docs/connection-extensions.md)：多路复用、旧客户端兼容、密钥配置与生命周期。
 - [协议与传输工厂注册表](docs/factory-registries.md)：独立注册、组合校验、资源归属与扩展方式。

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	Q "github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
@@ -152,8 +153,9 @@ func (s *quicServer) Stop(ctx context.Context) error {
 
 type slotKey struct{}
 type slot struct {
-	once sync.Once
-	s    *quicServer
+	once  sync.Once
+	s     *quicServer
+	local *ingress.LocalSlot
 }
 
 func (v *slot) ready() { v.once.Do(func() { v.s.mu.Lock(); v.s.pending--; v.s.mu.Unlock() }) }
@@ -167,7 +169,8 @@ func (s *quicServer) admit(ctx context.Context, _ *Q.ClientInfo) (context.Contex
 	s.pending++
 	s.wg.Add(1)
 	s.mu.Unlock()
-	v := &slot{s: s}
+	ctx, local := ingress.WithLocalSlot(ctx)
+	v := &slot{s: s, local: local}
 	context.AfterFunc(ctx, func() { v.ready(); s.mu.Lock(); s.total--; s.mu.Unlock(); s.wg.Done() })
 	return context.WithValue(ctx, slotKey{}, v), nil
 }
@@ -211,6 +214,7 @@ func (l *trackedListener) Accept(ctx context.Context) (*Q.Conn, error) {
 	c, err := l.Listener.Accept(ctx)
 	if err == nil {
 		if v, ok := c.Context().Value(slotKey{}).(*slot); ok {
+			v.local.Set(c.LocalAddr())
 			v.ready()
 		}
 		return c, nil

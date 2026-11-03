@@ -10,10 +10,12 @@ import (
 	"errors"
 	"math"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	"github.com/Ember-Moth/Lunaris/internal/transport"
 	SS "github.com/sagernet/sing-shadowsocks"
@@ -47,6 +49,7 @@ type udp2022Key struct {
 	user    string
 }
 type udp2022State struct {
+	local     netip.AddrPort
 	service   SS.Service
 	window    upstream.SlidingWindow
 	last      time.Time
@@ -250,10 +253,9 @@ func (s *server2022) servePacket(ctx context.Context, socket net.PacketConn) err
 	s.ctx = ctx
 	s.socket = socket
 	s.packetMu.Unlock()
-	wire := &packet2022Writer{s: s}
 	for {
 		buffer := buf.NewSize(65535)
-		n, addr, err := socket.ReadFrom(buffer.FreeBytes())
+		n, addr, local, err := ingress.ReadPacket(socket, buffer.FreeBytes())
 		if err != nil {
 			buffer.Release()
 			return err
@@ -280,6 +282,12 @@ func (s *server2022) servePacket(ctx context.Context, socket net.PacketConn) err
 			s.cleaned = now
 		}
 		state := s.states[key]
+		localEndpoint := M.SocksaddrFromNet(local).Unwrap().AddrPort()
+		if state != nil && state.local != localEndpoint {
+			s.packetMu.Unlock()
+			buffer.Release()
+			continue
+		}
 		if state != nil && !state.window.Check(id) {
 			s.packetMu.Unlock()
 			buffer.Release()
@@ -293,7 +301,7 @@ func (s *server2022) servePacket(ctx context.Context, socket net.PacketConn) err
 				buffer.Release()
 				continue
 			}
-			state = &udp2022State{active: true, published: make(chan struct{}), reserved: true}
+			state = &udp2022State{local: localEndpoint, active: true, published: make(chan struct{}), reserved: true}
 			if previous != nil {
 				state.window = previous.window
 			}
@@ -307,7 +315,7 @@ func (s *server2022) servePacket(ctx context.Context, socket net.PacketConn) err
 			s.states[key] = state
 			s.wg.Add(1)
 		}
-		err = state.service.NewPacket(context.WithoutCancel(ctx), wire, buffer, M.Metadata{Source: M.SocksaddrFromNet(addr).Unwrap()})
+		err = state.service.NewPacket(ingress.WithLocal(context.WithoutCancel(ctx), local), &packet2022Writer{s: s, local: local}, buffer, M.Metadata{Source: M.SocksaddrFromNet(addr).Unwrap()})
 		if err == nil {
 			state.window.Add(id)
 			state.last = now
@@ -397,7 +405,7 @@ func (h *udp2022Handler) NewPacketConnection(ctx context.Context, c N.PacketConn
 				continue
 			}
 			state.reserved = true
-			q = newPacketSession(s.owner, m.Source.AddrPort())
+			q = newPacketSession(s.owner, m.Source.AddrPort(), state.local)
 			q.writer = c
 			state.queue = q
 			state.flowDone = make(chan struct{})
@@ -496,7 +504,10 @@ func (s *server2022) closePacket(ctx context.Context) error {
 	}
 }
 
-type packet2022Writer struct{ s *server2022 }
+type packet2022Writer struct {
+	s     *server2022
+	local net.Addr
+}
 
 func (c *packet2022Writer) WritePacket(b *buf.Buffer, dst M.Socksaddr) error {
 	defer b.Release()
@@ -505,14 +516,14 @@ func (c *packet2022Writer) WritePacket(b *buf.Buffer, dst M.Socksaddr) error {
 	if err := c.s.socket.SetWriteDeadline(time.Now().Add(c.s.owner.limits.DialTimeout)); err != nil {
 		return err
 	}
-	_, err := c.s.socket.WriteTo(b.Bytes(), dst.UDPAddr())
+	_, err := ingress.WritePacket(c.s.socket, b.Bytes(), dst.UDPAddr(), c.local)
 	return err
 }
 func (*packet2022Writer) ReadPacket(*buf.Buffer) (M.Socksaddr, error) {
 	return M.Socksaddr{}, errors.New("write-only packet sink")
 }
 func (*packet2022Writer) Close() error                     { return nil }
-func (c *packet2022Writer) LocalAddr() net.Addr            { return c.s.socket.LocalAddr() }
+func (c *packet2022Writer) LocalAddr() net.Addr            { return c.local }
 func (*packet2022Writer) SetDeadline(time.Time) error      { return nil }
 func (*packet2022Writer) SetReadDeadline(time.Time) error  { return nil }
 func (*packet2022Writer) SetWriteDeadline(time.Time) error { return nil }

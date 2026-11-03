@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -134,6 +135,13 @@ func (s *socketServer) Start(parent context.Context) error {
 	}
 	if slices.Contains(s.Spec.Network, "udp") {
 		s.udp, err = (&net.ListenConfig{}).ListenPacket(s.ctx, "udp", address)
+		if err == nil {
+			var wrapped net.PacketConn
+			wrapped, err = ingress.PacketConn(s.udp)
+			if err == nil {
+				s.udp = wrapped
+			}
+		}
 		if err != nil {
 			if s.listener != nil {
 				s.listener.Close()
@@ -192,6 +200,10 @@ func (s *socketServer) serve(ctx context.Context, c net.Conn) {
 	// deadline so an upgraded client cannot hold a handshake slot forever.
 	_ = carrier.SetDeadline(carrier.deadline)
 	defer func() { carrier.Close(); c.Close() }()
+	if err := ingress.PrepareProxyConn(carrier.header); err != nil {
+		return
+	}
+	ctx = ingress.WithLocal(ctx, carrier.LocalAddr())
 	if s.handshake != nil {
 		wrapped, err := s.handshake(ctx, c)
 		if err != nil {
@@ -221,7 +233,7 @@ func (s *socketServer) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	s.upgrade(s, w, r)
+	s.upgrade(s, w, r.WithContext(ingress.WithLocal(r.Context(), r.Context().Value(carrierKey{}).(*trackedConn).LocalAddr())))
 }
 
 func headerToken(v, want string) bool {
@@ -289,6 +301,7 @@ type carrierKey struct{}
 type trackedConn struct {
 	net.Conn
 	raw      net.Conn
+	header   net.Conn
 	server   *socketServer
 	once     sync.Once
 	ready    sync.Once
@@ -346,11 +359,12 @@ func (l *streamListener) Accept() (net.Conn, error) {
 			raw.Close()
 			continue
 		}
-		var conn net.Conn = raw
+		header := ingress.AutoProxyConn(raw)
+		var conn net.Conn = header
 		if s.TLS != nil {
-			conn = tls.Server(raw, s.TLS)
+			conn = tls.Server(conn, s.TLS)
 		}
-		c := &trackedConn{Conn: conn, raw: raw, server: s, done: make(chan struct{}), deadline: time.Now().Add(s.Limits.HandshakeTimeout)}
+		c := &trackedConn{Conn: conn, raw: raw, header: header, server: s, done: make(chan struct{}), deadline: time.Now().Add(s.Limits.HandshakeTimeout)}
 		s.conns[c] = struct{}{}
 		s.mu.Unlock()
 		_ = c.SetDeadline(c.deadline)
@@ -376,11 +390,11 @@ func authenticated(ctx context.Context) {
 }
 func (b Bridge) NewConnectionEx(ctx context.Context, c net.Conn, src, dst M.Socksaddr, close N.CloseHandlerFunc) {
 	authenticated(ctx)
-	b.Handler.NewConnectionEx(ctx, c, src, dst, close)
+	b.Handler.NewConnectionEx(ingress.StreamContext(ctx, c), c, src, dst, close)
 }
 func (b Bridge) NewPacketConnectionEx(ctx context.Context, c N.PacketConn, src, dst M.Socksaddr, close N.CloseHandlerFunc) {
 	authenticated(ctx)
-	b.Handler.NewPacketConnectionEx(ctx, c, src, dst, close)
+	b.Handler.NewPacketConnectionEx(ingress.WithLocal(ctx, c.LocalAddr()), c, src, dst, close)
 }
 
 type readerConn struct {

@@ -5,10 +5,10 @@ import (
 	"context"
 	"errors"
 	"net"
-	"net/netip"
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	SS "github.com/sagernet/sing-shadowsocks"
@@ -33,7 +33,7 @@ type Server struct {
 	stopped     bool
 	ctx         context.Context
 	udp         net.PacketConn
-	sessions    map[netip.AddrPort]*packetSession
+	sessions    map[packetSessionKey]*packetSession
 	wg          sync.WaitGroup
 	stopOnce    sync.Once
 	done        chan struct{}
@@ -43,7 +43,7 @@ type Server struct {
 }
 
 func newServer(limits model.Limits, handler protocol.RelayHandler, method *shadowaead.Method) *Server {
-	return &Server{limits: limits, handler: handler, method: method, sessions: make(map[netip.AddrPort]*packetSession), done: make(chan struct{})}
+	return &Server{limits: limits, handler: handler, method: method, sessions: make(map[packetSessionKey]*packetSession), done: make(chan struct{})}
 }
 func (s *Server) ServePacket(ctx context.Context, conn net.PacketConn) error {
 	s.mu.Lock()
@@ -163,7 +163,7 @@ func (w *saltWindow) accept(salt []byte) bool {
 func (s *Server) readUDP() error {
 	for {
 		buffer := buf.NewSize(65535)
-		n, remote, err := s.udp.ReadFrom(buffer.FreeBytes())
+		n, remote, local, err := ingress.ReadPacket(s.udp, buffer.FreeBytes())
 		if err != nil {
 			buffer.Release()
 			return err
@@ -184,13 +184,15 @@ func (s *Server) readUDP() error {
 			continue
 		}
 		source := M.SocksaddrFromNet(remote).Unwrap().AddrPort()
+		localEndpoint := M.SocksaddrFromNet(local).Unwrap().AddrPort()
+		key := packetSessionKey{source, localEndpoint}
 		s.mu.Lock()
 		if s.stopped {
 			s.mu.Unlock()
 			buffer.Release()
 			return nil
 		}
-		session := s.sessions[source]
+		session := s.sessions[key]
 		created := false
 		if session == nil {
 			if len(s.sessions) >= s.limits.MaxUDPSessions {
@@ -198,8 +200,8 @@ func (s *Server) readUDP() error {
 				buffer.Release()
 				continue
 			}
-			session = newPacketSession(s, source)
-			s.sessions[source] = session
+			session = newPacketSession(s, source, localEndpoint)
+			s.sessions[key] = session
 			s.wg.Add(1)
 			created = true
 		}
@@ -210,7 +212,7 @@ func (s *Server) readUDP() error {
 		buffer.Release()
 		session.offer(payload, destination)
 		if created {
-			s.handler.NewPacketConnectionEx(s.ctx, session, M.SocksaddrFromNetIP(source), destination, N.OnceClose(func(error) { session.Close(); s.wg.Done() }))
+			s.handler.NewPacketConnectionEx(ingress.WithLocal(s.ctx, local), session, M.SocksaddrFromNetIP(source), destination, N.OnceClose(func(error) { session.Close(); s.wg.Done() }))
 		}
 	}
 }

@@ -173,6 +173,17 @@ UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadows
 
 迁移后通过的独立客户端验证：19 个基础组合；20 个扩展组合、7 个同端口 Shadowsocks 模式及 3 个 Xray REALITY 组合；43 个 Naive/SS2022 组合（显式跳过已有未通过的 Naive HTTP/3）；47 个 XHTTP 组合；162 个 Shadowsocks 插件组合与 4 个错误凭据检查；59 个 Snell/Mieru/SSR 代理组合与 5 个官方 Mieru API 用例（含受控丢包）。
 
-VLESS 96 组合的最终复跑仍出现 TCP/XHTTP 的 0-RTT 与 UDP 超时，因此本轮不将完整 VLESS 矩阵记为通过；启动阶段还曾出现 REALITY 目标探测失败，后续恢复启动成功，不宣称根因已修复。测试 TLS 目标改为在线程内执行有界握手，避免 accept 循环串行阻塞。协议实现和第三方依赖保持原版本。
+节点 YAML 退役当轮的 VLESS 96 组合复跑仍出现 TCP/XHTTP 的 0-RTT 与 UDP 超时，因此本轮不将完整 VLESS 矩阵记为通过；启动阶段还曾出现 REALITY 目标探测失败，后续恢复启动成功，不宣称根因已修复。测试 TLS 目标改为在线程内执行有界握手，避免 accept 循环串行阻塞。协议实现和第三方依赖保持原版本。
 
 压测脚本迁移冒烟通过：原生 AES-128-GCM 的单流/8 流上传与下载，以及 32/128 条已认证空闲连接的采样。该检查只验证脚本与 managed 启动流程，不是新的完整性能报告；原 2026-11-01 数据保持不变。
+
+## 源进源出与 PROXY protocol
+
+- [x] TCP PROXY v1/v2 自动检测与字节保留，放在 TLS/应用协议之前。
+- [x] TCP、UDP、QUIC、HTTP 载体及复用流统一传递入口地址。
+- [x] 同族出站绑源、地址不可用/跨族回退和 UDP 双栈关联。
+- [x] 通配 UDP 回包选源、会话端点隔离和 KCP 共享预算。
+
+实现范围、对端声明地址的信任边界及复现命令见[入口地址说明](ingress-addresses.md)。
+
+入口地址阶段验证：完整 vet/race、Linux 双架构交叉编译、实际出站源 IP 和独立客户端检查通过。普通连接的 19/96/162 组合复跑及已知偶发问题的范围见[验证记录](ingress-addresses.md)。

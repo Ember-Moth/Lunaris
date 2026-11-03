@@ -7,8 +7,10 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -17,12 +19,59 @@ import (
 type Direct struct{ net.Dialer }
 
 func (d *Direct) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	return d.Dialer.DialContext(ctx, network, destination.String())
+	ip, bind := ingress.BindingIP(ctx)
+	if !bind || destination.Addr.IsValid() && destination.Addr.Unmap().Is4() != ip.Is4() {
+		return d.Dialer.DialContext(ctx, network, destination.String())
+	}
+	bound := d.Dialer
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+		bound.LocalAddr = &net.TCPAddr{IP: net.IP(ip.AsSlice()), Zone: ip.Zone()}
+	case "udp", "udp4", "udp6":
+		bound.LocalAddr = &net.UDPAddr{IP: net.IP(ip.AsSlice()), Zone: ip.Zone()}
+	default:
+		return d.Dialer.DialContext(ctx, network, destination.String())
+	}
+	selected := familyNetwork(network, ip)
+	if destination.IsFqdn() {
+		// Let the resolver return both families. LocalAddr selects compatible
+		// candidates; forcing tcp4/tcp6 here would turn an other-family-only
+		// name into an indistinguishable DNS "no such host" error.
+		selected = network
+	}
+	c, err := bound.DialContext(ctx, selected, destination.String())
+	if unavailableSource(err) {
+		return d.Dialer.DialContext(ctx, network, destination.String())
+	}
+	return c, err
 }
 
-func (d *Direct) ListenPacket(ctx context.Context, _ M.Socksaddr) (net.PacketConn, error) {
+func (d *Direct) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	if ip, ok := ingress.BindingIP(ctx); ok {
+		return newSourcePacketConn(ctx, ip, destination)
+	}
 	var listen net.ListenConfig
 	return listen.ListenPacket(ctx, "udp", ":0")
+}
+
+func familyNetwork(network string, ip netip.Addr) string {
+	if network == "tcp" || network == "udp" {
+		if ip.Is4() {
+			return network + "4"
+		}
+		return network + "6"
+	}
+	return network
+}
+func unavailableSource(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.EADDRNOTAVAIL) {
+		return true
+	}
+	var addr *net.AddrError
+	return errors.As(err, &addr) && addr.Err == "no suitable address found"
 }
 
 var _ N.Dialer = (*Direct)(nil)
@@ -58,8 +107,9 @@ func (c *PacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) er
 			return errors.New("UDP destination has no addresses")
 		}
 		address := addresses[0].Unmap()
+		preferred, hasSource := ingress.BindingIP(c.ctx)
 		for _, candidate := range addresses {
-			if candidate.Is4() || candidate.Is4In6() {
+			if hasSource && candidate.Unmap().Is4() == preferred.Is4() || !hasSource && (candidate.Is4() || candidate.Is4In6()) {
 				address = candidate.Unmap()
 				break
 			}

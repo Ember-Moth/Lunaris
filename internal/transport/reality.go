@@ -13,8 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/egress"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	legacy "github.com/metacubex/utls"
+	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	reality "github.com/xtls/reality"
 )
@@ -139,7 +141,7 @@ func (RealityFactory) Build(r ResolvedSpec, b Binding) (Instance, error) {
 		defer cancel()
 		perConnection := cfg.Clone()
 		perConnection.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
-			raw, err := (&net.Dialer{Timeout: r.Limits.DialTimeout}).DialContext(ctx, network, address)
+			raw, err := (&egress.Direct{Dialer: net.Dialer{Timeout: r.Limits.DialTimeout}}).DialContext(ctx, network, M.ParseSocksaddr(address))
 			if err != nil {
 				return nil, err
 			}

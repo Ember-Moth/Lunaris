@@ -102,7 +102,7 @@ func (c *packetConn) WritePacket(b *buf.Buffer, dst M.Socksaddr) error {
 	if encoded != wire {
 		wire.Release()
 	}
-	return c.server.write(encoded, c.key.source)
+	return c.server.write(encoded, c.key.source, c.key.local)
 }
 func (c *packetConn) Close() error {
 	c.mu.Lock()
@@ -128,7 +128,7 @@ func (c *packetConn) Close() error {
 		}
 	}
 }
-func (c *packetConn) LocalAddr() net.Addr               { return net.UDPAddrFromAddrPort(c.key.source) }
+func (c *packetConn) LocalAddr() net.Addr               { return net.UDPAddrFromAddrPort(c.key.local) }
 func (c *packetConn) SetDeadline(t time.Time) error     { return c.SetReadDeadline(t) }
 func (c *packetConn) SetReadDeadline(t time.Time) error { c.deadline.Set(t); return nil }
 func (*packetConn) SetWriteDeadline(time.Time) error    { return nil }

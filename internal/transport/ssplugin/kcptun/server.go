@@ -18,7 +18,6 @@ import (
 // Server accepts KCP sessions over a UDP socket and serves their smux streams.
 type Server struct {
 	config   Config
-	block    kcp.BlockCrypt
 	sessions chan struct{}
 	pending  chan struct{}
 	streams  chan struct{}
@@ -62,12 +61,12 @@ func NewServer(config Config) (*Server, error) {
 	if config.HandshakeTimeout <= 0 {
 		config.HandshakeTimeout = 10 * time.Second
 	}
-	block, err := newBlock(config)
+	_, err := newBlock(config)
 	if err != nil {
 		return nil, err
 	}
 	return &Server{
-		config: config, block: block,
+		config:   config,
 		sessions: make(chan struct{}, config.MaxSessions),
 		pending:  make(chan struct{}, config.MaxPendingSessions),
 		streams:  make(chan struct{}, config.MaxActiveStreams),
@@ -77,7 +76,11 @@ func NewServer(config Config) (*Server, error) {
 // Serve accepts KCP sessions on the socket and hands each stream to the handler
 // until the socket closes.
 func (server *Server) Serve(ctx context.Context, packetConn net.PacketConn, handler func(net.Conn)) error {
-	listener, err := kcp.ServeConn(server.block, server.config.DataShard, server.config.ParityShard, packetConn)
+	block, err := newBlock(server.config)
+	if err != nil {
+		return err
+	}
+	listener, err := kcp.ServeConn(block, server.config.DataShard, server.config.ParityShard, packetConn)
 	if err != nil {
 		return err
 	}

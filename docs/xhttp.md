@@ -57,7 +57,7 @@
 }
 ```
 
-`path` 默认为 `/`，是未转义的绝对路径，可附带查询参数。Path 前缀规范化和字段提取沿用 Polaris。`host` 可省略；配置时忽略请求 Host 的大小写和端口，不将 `X-Forwarded-For` 当作可信客户端地址。
+`path` 默认为 `/`，是未转义的绝对路径，可附带查询参数。Path 前缀规范化和字段提取沿用 Polaris。`host` 可省略；配置时忽略请求 Host 的大小写和端口，不将 `X-Forwarded-For` 当作可信客户端地址。TCP 载体在 HTTP/TLS 之前自动识别 PROXY v1/v2，规则见[入口地址说明](ingress-addresses.md)。
 
 `extra` 是 API JSON 对象，保留上游字段拼写。范围值支持整数、`"from-to"` 字符串及 `{from, to}` 对象。
 

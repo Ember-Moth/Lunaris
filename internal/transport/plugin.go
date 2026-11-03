@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/egress"
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	P "github.com/Ember-Moth/Lunaris/internal/transport/ssplugin"
 	M "github.com/sagernet/sing/common/metadata"
@@ -92,8 +94,10 @@ func (f PluginFactory) Build(r ResolvedSpec, b Binding) (Instance, error) {
 			return nil, err
 		}
 		wrapped.Packet = &PacketHandler{Serve: func(ctx context.Context, c net.PacketConn) error {
-			return server.Serve(ctx, c, func(c net.Conn) {
-				_ = downstream.NewConnection(ctx, c, M.Metadata{Source: M.SocksaddrFromNet(c.RemoteAddr())})
+			return ingress.ServeByLocal(ctx, c, func(ctx context.Context, local net.PacketConn) error {
+				return server.Serve(ctx, local, func(c net.Conn) {
+					_ = downstream.NewConnection(ctx, c, M.Metadata{Source: M.SocksaddrFromNet(c.RemoteAddr())})
+				})
 			})
 		}}
 		if b.Packet != nil {
@@ -176,6 +180,7 @@ type pluginDownstream struct {
 }
 
 func (d *pluginDownstream) NewConnection(ctx context.Context, c net.Conn, metadata M.Metadata) error {
+	ctx = ingress.WithLocal(ctx, c.LocalAddr())
 	if handoff, ok := ctx.Value(pluginHandoffKey{}).(*pluginHandoff); ok {
 		handoff.promote()
 	}
@@ -239,7 +244,7 @@ func (d *pluginDownstream) NewConnection(ctx context.Context, c net.Conn, metada
 type pluginDialer struct{ timeout time.Duration }
 
 func (d pluginDialer) DialContext(ctx context.Context, network string, dst M.Socksaddr) (net.Conn, error) {
-	raw, err := (&net.Dialer{Timeout: d.timeout}).DialContext(ctx, network, dst.String())
+	raw, err := (&egress.Direct{Dialer: net.Dialer{Timeout: d.timeout}}).DialContext(ctx, network, dst)
 	if err != nil {
 		return nil, err
 	}

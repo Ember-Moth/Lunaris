@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	"github.com/Ember-Moth/Lunaris/internal/protocol"
 	wire "github.com/Ember-Moth/Lunaris/internal/protocol/shadowsocksr/wire"
@@ -36,6 +37,7 @@ type server struct {
 type packetKey struct {
 	user   [4]byte
 	source netip.AddrPort
+	local  netip.AddrPort
 }
 
 func (s *server) serveStream(ctx context.Context, raw net.Conn, source M.Socksaddr, close N.CloseHandlerFunc) error {
@@ -67,7 +69,7 @@ func (s *server) servePacket(ctx context.Context, c net.PacketConn) error {
 	s.mu.Unlock()
 	for {
 		b := buf.NewSize(65535)
-		n, addr, err := c.ReadFrom(b.FreeBytes())
+		n, addr, local, err := ingress.ReadPacket(c, b.FreeBytes())
 		if err != nil {
 			b.Release()
 			return err
@@ -85,7 +87,7 @@ func (s *server) servePacket(ctx context.Context, c net.PacketConn) error {
 			continue
 		}
 		source := M.SocksaddrFromNet(addr).Unwrap()
-		key := packetKey{user: id, source: source.AddrPort()}
+		key := packetKey{user: id, source: source.AddrPort(), local: M.SocksaddrFromNet(local).Unwrap().AddrPort()}
 		s.mu.Lock()
 		if s.stopped {
 			s.mu.Unlock()
@@ -111,7 +113,7 @@ func (s *server) servePacket(ctx context.Context, c net.PacketConn) error {
 		b.Release()
 		session.deliver(small, dst.Unwrap())
 		if fresh {
-			s.handler.NewPacketConnectionEx(auth.ContextWithUser(ctx, identity), session, source, dst.Unwrap(), N.OnceClose(func(error) { session.Close(); s.wg.Done() }))
+			s.handler.NewPacketConnectionEx(auth.ContextWithUser(ingress.WithLocal(ctx, local), identity), session, source, dst.Unwrap(), N.OnceClose(func(error) { session.Close(); s.wg.Done() }))
 		}
 	}
 }
@@ -146,13 +148,13 @@ func (s *server) reserve(n int) bool {
 	return true
 }
 func (s *server) release(n int) { s.budgetMu.Lock(); s.queued -= n; s.budgetMu.Unlock() }
-func (s *server) write(b *buf.Buffer, to netip.AddrPort) error {
+func (s *server) write(b *buf.Buffer, to, local netip.AddrPort) error {
 	defer b.Release()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if err := s.socket.SetWriteDeadline(time.Now().Add(s.limits.DialTimeout)); err != nil {
 		return err
 	}
-	_, err := s.socket.WriteTo(b.Bytes(), net.UDPAddrFromAddrPort(to))
+	_, err := ingress.WritePacket(s.socket, b.Bytes(), net.UDPAddrFromAddrPort(to), net.UDPAddrFromAddrPort(local))
 	return err
 }

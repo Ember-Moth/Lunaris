@@ -76,7 +76,7 @@ func TestIndependentUDPAEADWire(t *testing.T) {
 }
 
 func TestPacketQueueBudgetAndRelease(t *testing.T) {
-	server := &Server{limits: model.DefaultLimits(), sessions: make(map[netip.AddrPort]*packetSession)}
+	server := &Server{limits: model.DefaultLimits(), sessions: make(map[packetSessionKey]*packetSession)}
 	sessions := make([]*packetSession, 5)
 	for i := range sessions {
 		sessions[i] = newPacketSession(server, netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), uint16(10000+i)))

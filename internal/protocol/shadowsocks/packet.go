@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -40,7 +41,10 @@ func (s *Server) releasePacketBytes(n int) {
 
 // packetSession implements sing's PacketConn; queue ownership is explicit and
 // Close releases all queued buffers before it returns. A full queue drops input.
+type packetSessionKey struct{ source, local netip.AddrPort }
+
 type packetSession struct {
+	local    netip.AddrPort
 	server   *Server
 	writer   N.PacketWriter
 	source   netip.AddrPort
@@ -51,8 +55,12 @@ type packetSession struct {
 	deadline pipe.Deadline
 }
 
-func newPacketSession(server *Server, source netip.AddrPort) *packetSession {
-	return &packetSession{server: server, source: source, queue: make(chan packet, server.limits.UDPQueueSize), done: make(chan struct{}), deadline: pipe.MakeDeadline()}
+func newPacketSession(server *Server, source netip.AddrPort, locals ...netip.AddrPort) *packetSession {
+	var local netip.AddrPort
+	if len(locals) > 0 {
+		local = locals[0]
+	}
+	return &packetSession{server: server, source: source, local: local, queue: make(chan packet, server.limits.UDPQueueSize), done: make(chan struct{}), deadline: pipe.MakeDeadline()}
 }
 
 func (c *packetSession) offer(buffer *buf.Buffer, destination M.Socksaddr) {
@@ -107,7 +115,7 @@ func (c *packetSession) WritePacket(buffer *buf.Buffer, destination M.Socksaddr)
 		if err := c.server.udp.SetWriteDeadline(time.Now().Add(c.server.limits.DialTimeout)); err != nil {
 			return 0, err
 		}
-		return c.server.udp.WriteTo(packet, net.UDPAddrFromAddrPort(c.source))
+		return ingress.WritePacket(c.server.udp, packet, net.UDPAddrFromAddrPort(c.source), c.LocalAddr())
 	}})
 	// Classic AEAD UDP is symmetric: the upstream codec supplies salt, HKDF,
 	// encryption and address framing in both directions. No wire code is forked.
@@ -134,14 +142,19 @@ drain:
 	}
 	c.mu.Unlock()
 	c.server.mu.Lock()
-	if c.server.sessions[c.source] == c {
-		delete(c.server.sessions, c.source)
+	if c.server.sessions[packetSessionKey{c.source, c.local}] == c {
+		delete(c.server.sessions, packetSessionKey{c.source, c.local})
 	}
 	c.server.mu.Unlock()
 	return nil
 }
 
-func (c *packetSession) LocalAddr() net.Addr               { return net.UDPAddrFromAddrPort(c.source) }
+func (c *packetSession) LocalAddr() net.Addr {
+	if c.local.IsValid() {
+		return net.UDPAddrFromAddrPort(c.local)
+	}
+	return &net.UDPAddr{}
+}
 func (c *packetSession) SetDeadline(t time.Time) error     { return c.SetReadDeadline(t) }
 func (c *packetSession) SetReadDeadline(t time.Time) error { c.deadline.Set(t); return nil }
 func (*packetSession) SetWriteDeadline(time.Time) error    { return nil }

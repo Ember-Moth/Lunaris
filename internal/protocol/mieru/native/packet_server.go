@@ -13,6 +13,7 @@ import (
 )
 
 type packetSessionKey struct {
+	local  packetRemoteKey
 	remote packetRemoteKey
 	id     uint32
 }
@@ -80,7 +81,7 @@ func (s *Server) listenPacket() {
 			continue
 		}
 		remoteKey := remoteKeyFrom(remote)
-		key := packetSessionKey{remote: remoteKey, id: seg.meta.sessionID}
+		key := packetSessionKey{remote: remoteKey, local: remoteKeyFrom(local), id: seg.meta.sessionID}
 		value, loaded := s.packetSessions.Load(key)
 		if !loaded {
 			if seg.meta.protocol != openSessionRequest || seg.meta.sessionID == 0 || match.user == nil {

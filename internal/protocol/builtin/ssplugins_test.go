@@ -128,6 +128,10 @@ func TestShadowTLSFallbackTargetClosesAtHandshakeDeadline(t *testing.T) {
 	s := startSSPlugin(t, "shadow-tls", map[string]any{"version": 1, "handshake": target.Addr().String()}, limits)
 	raw := carrierDial(t, s, "tcp", false)
 	defer raw.Close()
+	// A TLS prefix selects the ordinary connection path before fallback dialing.
+	if _, err := raw.Write([]byte{22}); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case err := <-result:
 		if err != nil {

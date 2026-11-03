@@ -5,10 +5,17 @@ package kcptun
 import (
 	"context"
 	"errors"
-	"github.com/metacubex/kcp-go"
+	"fmt"
+	"io"
 	"net"
+	"net/netip"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
+	"github.com/metacubex/kcp-go"
+	"github.com/sagernet/smux"
 )
 
 func TestNewServerRequiresExplicitSecureConfiguration(t *testing.T) {
@@ -115,5 +122,98 @@ func TestUnauthenticatedKCPSessionReleasesBudget(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("KCP server did not stop")
+	}
+}
+
+func TestWildcardKCPSessionsKeepLocalEndpoints(t *testing.T) {
+	addresses, err := net.InterfaceAddrs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var local netip.Addr
+	for _, a := range addresses {
+		p, e := netip.ParsePrefix(a.String())
+		if e == nil && p.Addr().Is4() && !p.Addr().IsLoopback() && !p.Addr().IsLinkLocalUnicast() {
+			local = p.Addr()
+			break
+		}
+	}
+	if !local.IsValid() {
+		t.Skip("no local non-loopback IPv4 address")
+	}
+	cfg := Config{Key: "secret", Crypt: "aes", MTU: 1350, SndWnd: 128, RcvWnd: 128, DataShard: 10, ParityShard: 3, SockBuf: 1 << 20, SmuxVer: 1, SmuxBuf: 1 << 20, StreamBuf: 1 << 20, FrameSize: 8192, KeepAlive: 10, NoComp: true, HandshakeTimeout: time.Second, MaxSessions: 4, MaxPendingSessions: 4}
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := net.ListenPacket("udp4", "0.0.0.0:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	socket, err := ingress.PacketConn(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- ingress.ServeByLocal(ctx, socket, func(ctx context.Context, c net.PacketConn) error {
+			return server.Serve(ctx, c, func(stream net.Conn) {
+				defer stream.Close()
+				var request [1]byte
+				if _, err := io.ReadFull(stream, request[:]); err != nil {
+					return
+				}
+				stream.(interface{ ProtocolReady() }).ProtocolReady()
+				_, _ = io.WriteString(stream, ingress.AddressIP(stream.LocalAddr()).String()+"\n")
+			})
+		})
+	}()
+	port := raw.LocalAddr().(*net.UDPAddr).Port
+	for _, ip := range []netip.Addr{local, netip.MustParseAddr("127.0.0.1")} {
+		block, err := newBlock(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		carrier, err := kcp.DialWithOptions(net.JoinHostPort(ip.String(), fmt.Sprint(port)), block, cfg.DataShard, cfg.ParityShard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		configureKCP(carrier, cfg)
+		mux, err := smux.Client(carrier, smuxConfig(cfg))
+		if err != nil {
+			carrier.Close()
+			t.Fatal(err)
+		}
+		stream, err := mux.OpenStream()
+		if err != nil {
+			mux.Close()
+			carrier.Close()
+			t.Fatal(err)
+		}
+		stream.SetDeadline(time.Now().Add(2 * time.Second))
+		stream.Write([]byte{1})
+		reply, err := io.ReadAll(stream)
+		stream.Close()
+		mux.Close()
+		carrier.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.TrimSpace(string(reply)) != ip.String() {
+			t.Fatal("KCP local endpoint lost", string(reply), ip)
+		}
+	}
+	cancel()
+	raw.Close()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("KCP local sockets survived shutdown")
+	}
+	if len(server.sessions) != 0 || len(server.pending) != 0 || len(server.streams) != 0 {
+		t.Fatal("KCP shared resource budgets leaked")
 	}
 }

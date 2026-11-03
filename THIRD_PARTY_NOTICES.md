@@ -83,3 +83,9 @@ Copyright (C) 2026 Polaris contributors. Original Polaris adapter files retain G
 Lunaris modifications (2026-11-01): independent transport-factory integration; secret references; strict options and resource bounds; WebSocket early-data validation; logical and physical authentication budgets; cancellable target ownership with Restls deadline promotion; KCP unauthenticated session limits; serialization and record-size bounds around released ShadowTLS I/O; released smux API adaptation. New wrappers and regression tests have their own SPDX headers. The independent Mihomo test client is a separate module and is not part of the node's production dependency graph.
 
 VLESS mux follow-up (2026-11-02): flush each serialized write batch before releasing its writer lock; arrival counters cannot identify the final lock owner under concurrent scheduling. The imported GPL-3.0-or-later notices remain intact.
+
+## Ingress address propagation and PROXY protocol
+
+`internal/ingress/proxy_protocol*.go` and the Linux/macOS UDP ancillary helpers in `internal/ingress/udp_linux.go` and `udp_darwin.go` are adapted from Polaris commit `56d52fb44958ef3cc2a7fb841cd240f8206234b2`, `internal/runtime/proxy_protocol*.go` and the single-datagram helpers in `internal/runtime/udp_origin_{linux,darwin}.go`. Copyright (C) 2026 Polaris contributors; GPL-3.0-or-later. Source: <https://github.com/HyperPteLtd/Polaris/tree/56d52fb44958ef3cc2a7fb841cd240f8206234b2/internal/runtime>.
+
+Lunaris adaptations: per-connection preparation before TLS/camouflage; bounded shared UDP endpoint dispatch; immutable flow-origin propagation across multiplexing and QUIC streams; source-bound TCP and dual-family UDP egress; lifecycle and address-isolation tests. The direct-source policy also follows the principles in Polaris `internal/route/inbound.go` and `resolver.go`, without its panel or routing product layers.

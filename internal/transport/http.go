@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ember-Moth/Lunaris/internal/ingress"
 	"github.com/Ember-Moth/Lunaris/internal/model"
 	Q "github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
@@ -148,7 +149,7 @@ func configuredHTTP3Binding(handler http.Handler, timeout time.Duration, setting
 			if settings.onConnection != nil {
 				settings.onConnection(c)
 			}
-			ctx = context.WithValue(ctx, http.LocalAddrContextKey, c.LocalAddr())
+			ctx = context.WithValue(ingress.WithLocal(ctx, c.LocalAddr()), http.LocalAddrContextKey, c.LocalAddr())
 			timer := time.AfterFunc(timeout, func() { _ = c.CloseWithError(0, "authentication timeout") })
 			context.AfterFunc(c.Context(), func() { timer.Stop() })
 			return context.WithValue(ctx, protocolReadyKey{}, func() { timer.Stop() })

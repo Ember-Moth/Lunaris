@@ -34,7 +34,7 @@ import (
 	"golang.org/x/net/http2"
 )
 
-func start2022(t *testing.T, method string, multi bool, limits model.Limits) (running, []SS.Method) {
+func start2022(t *testing.T, method string, multi bool, limits model.Limits, addresses ...string) (running, []SS.Method) {
 	t.Helper()
 	size := 32
 	if method == "2022-blake3-aes-128-gcm" {
@@ -51,6 +51,9 @@ func start2022(t *testing.T, method string, multi bool, limits model.Limits) (ru
 	}
 	rawOptions, _ := json.Marshal(options)
 	spec := model.ListenerSpec{ID: "ss2022", Protocol: "shadowsocks", Address: "127.0.0.1", Enabled: true, Network: []string{"tcp", "udp"}, CredentialRefs: refs, Options: rawOptions, UDPOverTCP: true, Multiplex: model.Multiplex{Enabled: true}}
+	if len(addresses) > 0 {
+		spec.Address = addresses[0]
+	}
 	credentials := map[string][]byte{"one": []byte(key(1)), "two": []byte(key(2)), "server": []byte(key(3))}
 	ctx := testutil.Context(t)
 	flow := relay.New(ctx, &egress.Direct{}, limits)
