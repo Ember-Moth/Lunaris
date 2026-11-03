@@ -207,3 +207,12 @@ UDP 接入约束已核对 sing-box 1.14.4：AnyTLS 固定内建 UoT v2；Shadows
 - [x] UDP 逐包出口与资源限制、远端域名解析及 IP 规则固定解析结果。
 
 能力矩阵、API 请求和验收方式见[代理出站](outbounds.md)。TLS/HTTPS CONNECT、插件、mux/UoT、多用户 SS2022 身份链和多跳出站不在首批范围内。
+
+## 出站协议种类对齐 Polaris
+
+- [x] SOCKS4/4a、VMess、VLESS、Trojan、AnyTLS、Hysteria2、TUIC，连同已有协议共 11 个规范名称。
+- [x] VMess/VLESS UUID 资产、TLS 信任、Vision、AnyTLS UoT v2、TUIC UDP stream。
+- [x] 有界源地址客户端池、后台 socket 所有权、请求取消与 QUIC UDP 写期限适配。
+- [x] 独立 sing-box 的 TCP/UDP 矩阵、混合出口、连接隔离及重启/备份恢复。
+
+协议种类与传输/扩展选项的范围分别记录于[代理出站](outbounds.md)，不把现有入站组合标为出站支持。

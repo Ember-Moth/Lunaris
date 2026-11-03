@@ -57,7 +57,7 @@ class DNS(socketserver.BaseRequestHandler):
         name = ".".join(labels)
         kind = struct.unpack("!H", data[offset + 1:offset + 3])[0]
         self.server.queries.append(name)
-        permitted = not self.server.local_only or name == "direct.test"
+        permitted = not self.server.local_only or name in self.server.allowed
         answer = b"\xc0\x0c\x00\x01\x00\x01" + struct.pack("!IH", 60, 4) + b"\x7f\x00\x00\x01" if permitted and kind == 1 else b""
         response = data[:2] + (b"\x81\x80" if permitted else b"\x81\x83") + b"\x00\x01" + struct.pack("!H", int(bool(answer))) + b"\x00\x00\x00\x00" + data[12:offset + 5] + answer
         connection.sendto(response, self.client_address)
@@ -123,6 +123,7 @@ def main():
         for server in (local_dns, remote_dns):
             server.queries = []
             server.local_only = server is local_dns
+            server.allowed = {"direct.test"}
         for server in (tcp, udp, local_dns, remote_dns):
             server.daemon_threads = True
             threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -136,19 +137,52 @@ def main():
             return value
         management, inbound, client_port = port(), port(), port()
         password = "outbound-fixture-password"
+        user_uuid = "e3add7a8-6e5c-4c41-bcce-0d5015e79002"
+        cert, key = root / "cert.pem", root / "key.pem"
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", str(key), "-out", str(cert), "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         methods = ["aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305"]
         cases = [("socks5", None), ("http", None)] + [("shadowsocks", method) for method in methods]
+        cases += [("socks4", None), ("socks4a", None), ("vmess", "plain"), ("vmess", "tls"), ("vless", "plain"), ("vless", "tls"), ("vless", "vision"), ("trojan", None), ("anytls", None), ("hysteria2", None), ("tuic", None), ("tuic", "udp_stream")]
         outbounds, upstream_inbounds, secrets = [], [], {}
         for index, (protocol, method) in enumerate(cases):
             identifier, endpoint = f"p{index}", port()
-            secret = password
-            if method and method.startswith("2022"):
-                secret = base64.b64encode(bytes([index + 1]) * (16 if "aes-128" in method else 32)).decode()
-            secrets[identifier] = secret
-            options = {"method": method} if method else {"username": "alice"}
-            outbounds.append({"id": identifier, "protocol": protocol, "address": "127.0.0.1", "port": endpoint, "credential_ref": identifier, "options": options})
-            upstream = {"type": "socks" if protocol == "socks5" else protocol, "tag": identifier, "listen": "127.0.0.1", "listen_port": endpoint}
-            upstream.update({"method": method, "password": secret} if method else {"users": [{"username": "alice", "password": secret}]})
+            secret = user_uuid if protocol in ("vmess", "vless") else password
+            options = {}
+            upstream = {"type": "socks" if protocol.startswith("socks") else protocol, "tag": identifier, "listen": "127.0.0.1", "listen_port": endpoint}
+            if protocol == "shadowsocks":
+                if method.startswith("2022"):
+                    secret = base64.b64encode(bytes([index + 1]) * (16 if "aes-128" in method else 32)).decode()
+                options["method"] = method
+                upstream.update(method=method, password=secret)
+            elif protocol in ("socks4", "socks4a"):
+                options["username"] = "alice"
+                if protocol == "socks4":
+                    local_dns.allowed.add(identifier + ".test")
+            elif protocol in ("socks5", "http"):
+                options["username"] = "alice"
+                upstream["users"] = [{"username": "alice", "password": secret}]
+            elif protocol in ("vmess", "vless"):
+                upstream["users"] = [{"uuid": user_uuid}]
+                if method == "vision":
+                    options["flow"] = "xtls-rprx-vision"
+                    upstream["users"][0]["flow"] = "xtls-rprx-vision"
+            elif protocol == "tuic":
+                options["uuid"] = user_uuid
+                if method == "udp_stream":
+                    options["udp_stream"] = True
+                upstream["users"] = [{"uuid": user_uuid, "password": secret}]
+            else:
+                upstream["users"] = [{"password": secret}]
+            if protocol in ("trojan", "anytls", "hysteria2", "tuic") or method in ("tls", "vision"):
+                options["tls"] = {"enabled": True, "server_name": "localhost", "ca_pem": cert.read_text()}
+                upstream["tls"] = {"enabled": True, "certificate_path": str(cert), "key_path": str(key)}
+                if protocol in ("hysteria2", "tuic"):
+                    upstream["tls"]["alpn"] = ["h3"]
+            spec = {"id": identifier, "protocol": protocol, "address": "127.0.0.1", "port": endpoint, "options": options}
+            if protocol not in ("socks4", "socks4a"):
+                secrets[identifier] = secret
+                spec["credential_ref"] = identifier
+            outbounds.append(spec)
             upstream_inbounds.append(upstream)
         upstream_config = {"log": {"level": "error"}, "dns": {"servers": [{"type": "udp", "tag": "fixture", "server": "127.0.0.1", "server_port": remote_dns.server_address[1]}], "strategy": "ipv4_only"}, "inbounds": upstream_inbounds, "outbounds": [{"type": "direct", "tag": "direct"}], "route": {"final": "direct", "default_domain_resolver": "fixture"}}
         upstream_path = root / "upstream.json"
@@ -168,18 +202,29 @@ def main():
                     payload = (f"TCP via {protocol}/{method}".encode()) * 2000
                     connection.sendall(payload)
                     assert exact(connection, len(payload)) == payload
-                print(f"PASS {protocol}/{method or 'connect'} TCP with remote DNS", flush=True)
+                print(f"PASS {protocol}/{method or 'native'} TCP with {'local' if protocol == 'socks4' else 'remote'} DNS", flush=True)
             control, relay = socks(client_port, 3, "0.0.0.0", 0)
-            with control, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as datagram:
+            with control, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as datagram, contextlib.ExitStack() as held:
+                keepers = []
+                for index, (protocol, variant) in enumerate(cases):
+                    if protocol in ("anytls", "hysteria2") or protocol == "tuic" and variant is None:
+                        connection, _ = socks(client_port, 1, f"p{index}.test", tcp.server_address[1])
+                        held.enter_context(connection)
+                        connection.sendall(b"held"); assert exact(connection, 4) == b"held"
+                        keepers.append(connection)
                 datagram.settimeout(3)
                 relay = ("127.0.0.1" if relay[0] == "0.0.0.0" else relay[0], relay[1])
                 for index, (protocol, _) in enumerate(cases):
-                    if protocol == "http":
+                    if protocol in ("http", "socks4", "socks4a"):
                         continue
                     payload = f"same association, outbound {index}".encode()
                     datagram.sendto(b"\0\0\0" + encoded(f"p{index}.test", udp.server_address[1]) + payload, relay)
-                    response, _ = datagram.recvfrom(65535)
+                    try:
+                        response, _ = datagram.recvfrom(65535)
+                    except socket.timeout as error:
+                        raise AssertionError(f"UDP failed for {protocol}/{cases[index][1]}") from error
                     assert udp_payload(response) == payload
+                    print(f"PASS {protocol}/{cases[index][1] or 'native'} UDP", flush=True)
                 payload = b"same association, direct"
                 datagram.sendto(b"\0\0\0" + encoded("direct.test", udp.server_address[1]) + payload, relay)
                 assert udp_payload(datagram.recvfrom(65535)[0]) == payload
@@ -190,8 +235,11 @@ def main():
                     raise AssertionError("HTTP route forwarded UDP")
                 except socket.timeout:
                     pass
-            assert all(name == "direct.test" for name in local_dns.queries), local_dns.queries
-            print("PASS one UDP association across SOCKS5, six Shadowsocks methods and direct; HTTP UDP rejected", flush=True)
+                for connection in keepers:
+                    connection.sendall(b"still alive")
+                    assert exact(connection, 11) == b"still alive"
+            assert all(name in local_dns.allowed for name in local_dns.queries), local_dns.queries
+            print("PASS mixed UDP association across supported outbounds and direct; HTTP UDP rejected", flush=True)
 
         with running(binary, root, state, management):
             api.call("POST", "/api/v1/setup", {"token": (state / "setup-token").read_text().strip(), "username": "admin", "password": password}, status=201)
@@ -202,7 +250,7 @@ def main():
                 assets[name] = asset["id"]
             document = {"config": {"schema_version": 1, "listeners": [{"id": "ss", "enabled": True, "protocol": "shadowsocks", "address": "127.0.0.1", "port": inbound, "network": ["tcp", "udp"], "credential_refs": ["inbound"], "options": {"method": "aes-128-gcm"}}], "outbounds": outbounds, "route": {"final": "p0", "rules": [{"action": "direct", "match": ["full:direct.test"]}] + [{"action": "route", "outbound": f"p{index}", "match": [f"full:p{index}.test"]} for index in range(len(cases))]}, "dns": {"servers": [{"protocol": "udp", "address": f"127.0.0.1:{local_dns.server_address[1]}"}], "strategy": "only_ipv4"}}, "credential_assets": assets, "certificate_assets": {}}
             capabilities, _ = api.call("GET", "/api/v1/capabilities")
-            assert {item["protocol"] for item in capabilities["outbound_protocols"]} == {"http", "socks5", "shadowsocks"}
+            assert {item["protocol"] for item in capabilities["outbound_protocols"]} == {protocol for protocol, _ in cases}
             invalid = copy.deepcopy(document); invalid["config"]["route"]["final"] = "missing"
             api.call("POST", "/api/v1/config/validate", invalid, status=422)
             draft, _ = api.call("PUT", "/api/v1/config/draft", document, headers={"If-Match": '"r0"'})

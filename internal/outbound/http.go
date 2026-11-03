@@ -2,6 +2,7 @@
 package outbound
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -33,7 +34,7 @@ func (httpFactory) Capabilities() Capabilities { return Capabilities{Protocol: "
 func (httpFactory) Normalize(s model.OutboundSpec, secret []byte) (json.RawMessage, error) {
 	return normalizeAuth(s, secret, false)
 }
-func (httpFactory) Build(s model.OutboundSpec, secret []byte, d N.Dialer) (ProtocolClient, error) {
+func (httpFactory) Build(_ context.Context, s model.OutboundSpec, secret []byte, d N.Dialer, _ model.Limits) (ProtocolClient, error) {
 	var options authOptions
 	_ = json.Unmarshal(s.Options, &options)
 	return &httpClient{singhttp.NewClient(singhttp.Options{Dialer: d, Server: M.ParseSocksaddrHostPort(s.Address, s.Port), Username: options.Username, Password: string(secret)})}, nil

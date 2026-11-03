@@ -7,33 +7,53 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 
 	"github.com/Ember-Moth/Lunaris/internal/model"
+	"github.com/Ember-Moth/Lunaris/internal/route"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/protocol/socks"
 	"github.com/sagernet/sing/protocol/socks/socks5"
 )
 
-type socksFactory struct{}
+type socksFactory struct{ kind string }
 
-func (socksFactory) Capabilities() Capabilities {
-	return Capabilities{Protocol: "socks5", TCP: true, UDP: true}
+func (f socksFactory) name() string {
+	if f.kind == "" {
+		return "socks5"
+	}
+	return f.kind
 }
-func (socksFactory) Normalize(s model.OutboundSpec, secret []byte) (json.RawMessage, error) {
+
+func (f socksFactory) Capabilities() Capabilities {
+	return Capabilities{Protocol: f.name(), TCP: true, UDP: f.name() == "socks5"}
+}
+func (f socksFactory) Normalize(s model.OutboundSpec, secret []byte) (json.RawMessage, error) {
+	if f.name() != "socks5" {
+		var options authOptions
+		if err := decodeOptions(s.Options, &options); err != nil {
+			return nil, err
+		}
+		if s.CredentialRef != "" || len(options.Username) > 255 || strings.ContainsAny(options.Username, "\x00\r\n") {
+			return nil, errors.New("SOCKS4/4a accepts a user id but no password credential")
+		}
+		return json.Marshal(options)
+	}
 	return normalizeAuth(s, secret, true)
 }
-func (socksFactory) Build(s model.OutboundSpec, secret []byte, d N.Dialer) (ProtocolClient, error) {
+func (f socksFactory) Build(_ context.Context, s model.OutboundSpec, secret []byte, d N.Dialer, _ model.Limits) (ProtocolClient, error) {
 	var options authOptions
 	_ = json.Unmarshal(s.Options, &options)
-	return &socksClient{dialer: d, server: M.ParseSocksaddrHostPort(s.Address, s.Port), username: options.Username, password: string(secret)}, nil
+	return &socksClient{kind: f.name(), dialer: d, server: M.ParseSocksaddrHostPort(s.Address, s.Port), username: options.Username, password: string(secret)}, nil
 }
 
 type socksClient struct {
 	dialer             N.Dialer
 	server             M.Socksaddr
 	username, password string
+	kind               string
 }
 
 func (*socksClient) Close() error { return nil }
@@ -41,11 +61,43 @@ func (c *socksClient) DialContext(ctx context.Context, network string, dst M.Soc
 	if network != "tcp" {
 		return nil, ErrUnsupportedNetwork
 	}
+	if c.kind == "socks4" && dst.IsFqdn() {
+		addresses, ok := route.ResolvedAddressesFromContext(ctx, dst.Fqdn)
+		if !ok {
+			var err error
+			if resolver := route.NameResolverFromContext(ctx); resolver != nil {
+				addresses, err = resolver.LookupIP(ctx, dst.Fqdn)
+			} else {
+				addresses, err = net.DefaultResolver.LookupNetIP(ctx, "ip4", dst.Fqdn)
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
+		found := false
+		for _, ip := range addresses {
+			if ip.Unmap().Is4() {
+				dst = M.Socksaddr{Addr: ip.Unmap(), Port: dst.Port}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, errors.New("SOCKS4 destination has no IPv4 address")
+		}
+	}
+	if c.kind != "socks5" && !dst.IsFqdn() && !dst.Addr.Unmap().Is4() {
+		return nil, errors.New("SOCKS4/4a cannot encode IPv6 destinations")
+	}
 	conn, err := c.dialer.DialContext(ctx, "tcp", c.server)
 	if err != nil {
 		return nil, err
 	}
 	err = handshake(ctx, conn, func() error {
+		if c.kind != "socks5" {
+			_, err := socks.ClientHandshake4(conn, 1, dst, c.username)
+			return err
+		}
 		_, err := socks.ClientHandshake5(conn, socks5.CommandConnect, dst, c.username, c.password)
 		return err
 	})
@@ -55,6 +107,9 @@ func (c *socksClient) DialContext(ctx context.Context, network string, dst M.Soc
 	return conn, nil
 }
 func (c *socksClient) ListenPacket(ctx context.Context, dst M.Socksaddr) (net.PacketConn, error) {
+	if c.kind != "socks5" {
+		return nil, ErrUnsupportedNetwork
+	}
 	control, err := c.dialer.DialContext(ctx, "tcp", c.server)
 	if err != nil {
 		return nil, err

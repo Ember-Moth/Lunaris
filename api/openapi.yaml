@@ -145,7 +145,7 @@ components:
                     type: array
                 outbound_protocols:
                     type: array
-                    maxItems: 3
+                    maxItems: 11
                     items:
                         $ref: '#/components/schemas/OutboundCapability'
                 protocols:
@@ -1694,7 +1694,7 @@ components:
             properties:
                 protocol:
                     type: string
-                    enum: [socks5, http, shadowsocks]
+                    enum: [socks4, socks4a, socks5, http, shadowsocks, vmess, vless, trojan, anytls, hysteria2, tuic]
                 tcp:
                     type: boolean
                 udp:
@@ -1719,7 +1719,7 @@ components:
                     maxLength: 256
                 protocol:
                     type: string
-                    enum: [socks5, http, shadowsocks]
+                    enum: [socks4, socks4a, socks5, http, shadowsocks, vmess, vless, trojan, anytls, hysteria2, tuic, socks, hysteria]
                 address:
                     type: string
                     minLength: 1
@@ -1732,25 +1732,90 @@ components:
                 credential_ref:
                     type: string
                     maxLength: 128
-                    description: Logical credential_assets alias. Required for Shadowsocks or authenticated SOCKS5/HTTP.
+                    description: Logical credential_assets alias. VMess/VLESS use UUID material; other authenticated protocols use passwords. SOCKS4/4a has no password credential.
                 options:
-                    oneOf:
+                    anyOf:
                         - $ref: '#/components/schemas/ProxyAuthOptions'
                         - $ref: '#/components/schemas/ShadowsocksOutboundOptions'
+                        - $ref: '#/components/schemas/TLSOutboundOptions'
+                        - $ref: '#/components/schemas/VMessOutboundOptions'
+                        - $ref: '#/components/schemas/VLESSOutboundOptions'
+                        - $ref: '#/components/schemas/Hysteria2OutboundOptions'
+                        - $ref: '#/components/schemas/TUICOutboundOptions'
+                    description: Protocol-specific fields below. Password/UUID credentials use credential_ref; trust PEM is public certificate data.
             allOf:
                 - if:
                       properties:
                           protocol:
-                              const: shadowsocks
+                              enum: [socks5, socks, http]
+                  then:
+                      properties:
+                          options:
+                              $ref: '#/components/schemas/ProxyAuthOptions'
+                - if:
+                      properties:
+                          protocol:
+                              enum: [socks4, socks4a]
+                  then:
+                      not:
+                          required: [credential_ref]
+                      properties:
+                          options:
+                              $ref: '#/components/schemas/ProxyAuthOptions'
+                - if:
+                      properties:
+                          protocol:
+                              enum: [shadowsocks]
                   then:
                       required: [credential_ref, options]
                       properties:
                           options:
                               $ref: '#/components/schemas/ShadowsocksOutboundOptions'
-                  else:
+                - if:
+                      properties:
+                          protocol:
+                              enum: [vmess]
+                  then:
+                      required: [credential_ref]
                       properties:
                           options:
-                              $ref: '#/components/schemas/ProxyAuthOptions'
+                              $ref: '#/components/schemas/VMessOutboundOptions'
+                - if:
+                      properties:
+                          protocol:
+                              enum: [vless]
+                  then:
+                      required: [credential_ref]
+                      properties:
+                          options:
+                              $ref: '#/components/schemas/VLESSOutboundOptions'
+                - if:
+                      properties:
+                          protocol:
+                              enum: [trojan, anytls]
+                  then:
+                      required: [credential_ref]
+                      properties:
+                          options:
+                              $ref: '#/components/schemas/TLSOutboundOptions'
+                - if:
+                      properties:
+                          protocol:
+                              enum: [hysteria2, hysteria]
+                  then:
+                      required: [credential_ref]
+                      properties:
+                          options:
+                              $ref: '#/components/schemas/Hysteria2OutboundOptions'
+                - if:
+                      properties:
+                          protocol:
+                              enum: [tuic]
+                  then:
+                      required: [credential_ref, options]
+                      properties:
+                          options:
+                              $ref: '#/components/schemas/TUICOutboundOptions'
         ProxyAuthOptions:
             type: object
             additionalProperties: false
@@ -1758,7 +1823,7 @@ components:
                 username:
                     type: string
                     maxLength: 255
-                    description: Must be paired with credential_ref; omit both for anonymous access.
+                    description: SOCKS5/HTTP must pair username with credential_ref; SOCKS4/4a uses only the optional user id.
         ShadowsocksOutboundOptions:
             type: object
             additionalProperties: false
@@ -1767,6 +1832,98 @@ components:
                 method:
                     type: string
                     enum: [aes-128-gcm, aes-256-gcm, chacha20-ietf-poly1305, 2022-blake3-aes-128-gcm, 2022-blake3-aes-256-gcm, 2022-blake3-chacha20-poly1305]
+        OutboundTLS:
+            type: object
+            additionalProperties: false
+            properties:
+                enabled:
+                    type: boolean
+                    description: Required to be true when TLS options are supplied for Trojan, AnyTLS, Hysteria2 or TUIC.
+                server_name:
+                    type: string
+                    maxLength: 253
+                alpn:
+                    type: array
+                    maxItems: 8
+                    items:
+                        type: string
+                        minLength: 1
+                        maxLength: 255
+                ca_pem:
+                    type: string
+                    maxLength: 16384
+                    description: Optional PEM trust certificates; replaces system roots for this outbound. No private key.
+                insecure:
+                    type: boolean
+                    default: false
+                    description: Explicitly skip certificate verification; cannot combine with ca_pem.
+        TLSOutboundOptions:
+            type: object
+            additionalProperties: false
+            properties:
+                tls:
+                    $ref: '#/components/schemas/OutboundTLS'
+        VMessOutboundOptions:
+            type: object
+            additionalProperties: false
+            properties:
+                cipher:
+                    type: string
+                    default: auto
+                    enum: [auto, aes-128-gcm, chacha20-poly1305, none, zero]
+                tls:
+                    $ref: '#/components/schemas/OutboundTLS'
+        VLESSOutboundOptions:
+            type: object
+            additionalProperties: false
+            properties:
+                flow:
+                    type: string
+                    enum: ['', xtls-rprx-vision]
+                    description: Vision requires TLS and uses TLS 1.3.
+                tls:
+                    $ref: '#/components/schemas/OutboundTLS'
+        Hysteria2OutboundOptions:
+            type: object
+            additionalProperties: false
+            properties:
+                upload_mbps:
+                    type: integer
+                    minimum: 0
+                    maximum: 100000
+                    description: Upload/download must both be zero (automatic) or both positive.
+                download_mbps:
+                    type: integer
+                    minimum: 0
+                    maximum: 100000
+                tls:
+                    $ref: '#/components/schemas/OutboundTLS'
+        TUICOutboundOptions:
+            type: object
+            additionalProperties: false
+            required: [uuid]
+            properties:
+                uuid:
+                    type: string
+                    format: uuid
+                congestion_control:
+                    type: string
+                    default: cubic
+                    enum: [cubic, new_reno, bbr]
+                udp_stream:
+                    type: boolean
+                    default: false
+                zero_rtt:
+                    type: boolean
+                    default: false
+                heartbeat:
+                    type: integer
+                    default: 10000000000
+                    minimum: 1000000000
+                    maximum: 60000000000
+                    description: Heartbeat interval in nanoseconds.
+                tls:
+                    $ref: '#/components/schemas/OutboundTLS'
         Operation:
             additionalProperties: false
             properties:

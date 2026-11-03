@@ -39,7 +39,7 @@ type ProtocolClient interface {
 type Factory interface {
 	Capabilities() Capabilities
 	Normalize(model.OutboundSpec, []byte) (json.RawMessage, error)
-	Build(model.OutboundSpec, []byte, N.Dialer) (ProtocolClient, error)
+	Build(context.Context, model.OutboundSpec, []byte, N.Dialer, model.Limits) (ProtocolClient, error)
 }
 
 // Registry is immutable after construction; protocol registration is explicit.
@@ -47,7 +47,7 @@ type Registry struct{ factories map[string]Factory }
 
 func NewRegistry() *Registry {
 	r := &Registry{factories: make(map[string]Factory)}
-	for _, f := range []Factory{socksFactory{}, httpFactory{}, shadowsocksFactory{}} {
+	for _, f := range []Factory{socksFactory{}, socksFactory{kind: "socks4"}, socksFactory{kind: "socks4a"}, httpFactory{}, shadowsocksFactory{}, vmessFactory{}, vlessFactory{}, trojanFactory{}, anytlsFactory{}, hysteriaFactory{}, tuicFactory{}} {
 		r.factories[f.Capabilities().Protocol] = f
 	}
 	return r
@@ -77,6 +77,12 @@ func ValidID(id string) bool {
 func (r *Registry) Normalize(spec model.OutboundSpec, credentials map[string][]byte) (model.OutboundSpec, error) {
 	if !ValidID(spec.ID) || len(spec.Name) > 256 {
 		return spec, errors.New("invalid outbound id or name")
+	}
+	switch spec.Protocol {
+	case "socks":
+		spec.Protocol = "socks5"
+	case "hysteria":
+		spec.Protocol = "hysteria2"
 	}
 	f, ok := r.factories[spec.Protocol]
 	if !ok {
@@ -129,7 +135,7 @@ func (r *Registry) Build(ctx context.Context, spec model.OutboundSpec, credentia
 	if err != nil {
 		return nil, err
 	}
-	raw, err := r.factories[spec.Protocol].Build(spec, credentials[spec.CredentialRef], handshakeDialer{Dialer: dialer, timeout: limits.HandshakeTimeout})
+	raw, err := r.factories[spec.Protocol].Build(ctx, spec, credentials[spec.CredentialRef], handshakeDialer{Dialer: dialer, timeout: limits.HandshakeTimeout}, limits)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +146,7 @@ func decodeOptions(raw json.RawMessage, value any) error {
 	if len(raw) == 0 {
 		raw = []byte("{}")
 	}
-	if len(raw) > 4096 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+	if len(raw) > 32768 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return errors.New("invalid outbound options")
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))

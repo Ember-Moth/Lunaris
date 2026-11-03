@@ -46,7 +46,7 @@ func (f shadowsocksFactory) Normalize(s model.OutboundSpec, secret []byte) (json
 	}
 	return json.Marshal(options)
 }
-func (shadowsocksFactory) Build(s model.OutboundSpec, secret []byte, d N.Dialer) (ProtocolClient, error) {
+func (shadowsocksFactory) Build(_ context.Context, s model.OutboundSpec, secret []byte, d N.Dialer, _ model.Limits) (ProtocolClient, error) {
 	var options ssOptions
 	_ = json.Unmarshal(s.Options, &options)
 	var method ss.Method

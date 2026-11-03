@@ -1016,7 +1016,7 @@ export interface components {
         };
         OutboundCapability: {
             /** @enum {string} */
-            protocol: "socks5" | "http" | "shadowsocks";
+            protocol: "socks4" | "socks4a" | "socks5" | "http" | "shadowsocks" | "vmess" | "vless" | "trojan" | "anytls" | "hysteria2" | "tuic";
             tcp: boolean;
             udp: boolean;
             methods?: string[];
@@ -1026,21 +1026,79 @@ export interface components {
             id: string;
             name?: string;
             /** @enum {string} */
-            protocol: "socks5" | "http" | "shadowsocks";
+            protocol: "socks4" | "socks4a" | "socks5" | "http" | "shadowsocks" | "vmess" | "vless" | "trojan" | "anytls" | "hysteria2" | "tuic" | "socks" | "hysteria";
             /** @description Proxy hostname or unbracketed IP address, without port or URL scheme. */
             address: string;
             port: number;
-            /** @description Logical credential_assets alias. Required for Shadowsocks or authenticated SOCKS5/HTTP. */
+            /** @description Logical credential_assets alias. VMess/VLESS use UUID material; other authenticated protocols use passwords. SOCKS4/4a has no password credential. */
             credential_ref?: string;
-            options?: components["schemas"]["ProxyAuthOptions"] | components["schemas"]["ShadowsocksOutboundOptions"];
-        } & unknown;
+            /** @description Protocol-specific fields below. Password/UUID credentials use credential_ref; trust PEM is public certificate data. */
+            options?: components["schemas"]["ProxyAuthOptions"] | components["schemas"]["ShadowsocksOutboundOptions"] | components["schemas"]["TLSOutboundOptions"] | components["schemas"]["VMessOutboundOptions"] | components["schemas"]["VLESSOutboundOptions"] | components["schemas"]["Hysteria2OutboundOptions"] | components["schemas"]["TUICOutboundOptions"];
+        } & (unknown & unknown & unknown & unknown & unknown & unknown & unknown & unknown);
         ProxyAuthOptions: {
-            /** @description Must be paired with credential_ref; omit both for anonymous access. */
+            /** @description SOCKS5/HTTP must pair username with credential_ref; SOCKS4/4a uses only the optional user id. */
             username?: string;
         };
         ShadowsocksOutboundOptions: {
             /** @enum {string} */
             method: "aes-128-gcm" | "aes-256-gcm" | "chacha20-ietf-poly1305" | "2022-blake3-aes-128-gcm" | "2022-blake3-aes-256-gcm" | "2022-blake3-chacha20-poly1305";
+        };
+        OutboundTLS: {
+            /** @description Required to be true when TLS options are supplied for Trojan, AnyTLS, Hysteria2 or TUIC. */
+            enabled?: boolean;
+            server_name?: string;
+            alpn?: string[];
+            /** @description Optional PEM trust certificates; replaces system roots for this outbound. No private key. */
+            ca_pem?: string;
+            /**
+             * @description Explicitly skip certificate verification; cannot combine with ca_pem.
+             * @default false
+             */
+            insecure: boolean;
+        };
+        TLSOutboundOptions: {
+            tls?: components["schemas"]["OutboundTLS"];
+        };
+        VMessOutboundOptions: {
+            /**
+             * @default auto
+             * @enum {string}
+             */
+            cipher: "auto" | "aes-128-gcm" | "chacha20-poly1305" | "none" | "zero";
+            tls?: components["schemas"]["OutboundTLS"];
+        };
+        VLESSOutboundOptions: {
+            /**
+             * @description Vision requires TLS and uses TLS 1.3.
+             * @enum {string}
+             */
+            flow?: "" | "xtls-rprx-vision";
+            tls?: components["schemas"]["OutboundTLS"];
+        };
+        Hysteria2OutboundOptions: {
+            /** @description Upload/download must both be zero (automatic) or both positive. */
+            upload_mbps?: number;
+            download_mbps?: number;
+            tls?: components["schemas"]["OutboundTLS"];
+        };
+        TUICOutboundOptions: {
+            /** Format: uuid */
+            uuid: string;
+            /**
+             * @default cubic
+             * @enum {string}
+             */
+            congestion_control: "cubic" | "new_reno" | "bbr";
+            /** @default false */
+            udp_stream: boolean;
+            /** @default false */
+            zero_rtt: boolean;
+            /**
+             * @description Heartbeat interval in nanoseconds.
+             * @default 10000000000
+             */
+            heartbeat: number;
+            tls?: components["schemas"]["OutboundTLS"];
         };
         Operation: {
             base_revision: string;
